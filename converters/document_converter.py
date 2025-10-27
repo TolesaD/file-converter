@@ -11,6 +11,9 @@ from config import Config
 import subprocess
 import sys
 import fitz  # PyMuPDF for better PDF handling
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DocumentConverter:
     def __init__(self):
@@ -25,6 +28,69 @@ class DocumentConverter:
             'txt_to_pdf': (['txt'], 'pdf'),
             'markdown_to_pdf': (['md', 'markdown'], 'pdf')
         }
+    
+    async def convert_document(self, input_path, output_format):
+        """Main document conversion method that routes to specific converters"""
+        try:
+            input_extension = input_path.split('.')[-1].lower()
+            
+            if input_extension == 'pdf':
+                if output_format == 'txt':
+                    output_path = input_path.rsplit('.', 1)[0] + '.txt'
+                    return await self.convert_pdf_to_txt(input_path, output_path)
+                elif output_format == 'docx':
+                    output_path = input_path.rsplit('.', 1)[0] + '.docx'
+                    return await self.convert_pdf_to_docx(input_path, output_path)
+                elif output_format in ['jpg', 'png', 'jpeg']:
+                    images = await self.convert_pdf_to_images(input_path, output_format)
+                    return images[0] if images else None
+                else:
+                    raise Exception(f"PDF to {output_format} conversion not supported")
+            
+            elif input_extension in ['docx', 'doc']:
+                if output_format == 'pdf':
+                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
+                    return await self.convert_docx_to_pdf(input_path, output_path)
+                elif output_format == 'txt':
+                    output_path = input_path.rsplit('.', 1)[0] + '.txt'
+                    return await self.convert_docx_to_txt(input_path, output_path)
+                else:
+                    raise Exception(f"DOCX to {output_format} conversion not supported")
+            
+            elif input_extension == 'txt':
+                if output_format == 'pdf':
+                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
+                    return await self.convert_txt_to_pdf(input_path, output_path)
+                else:
+                    raise Exception(f"TXT to {output_format} conversion not supported")
+            
+            elif input_extension in ['xlsx', 'xls', 'csv']:
+                if output_format == 'pdf':
+                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
+                    return await self.convert_excel_to_pdf(input_path, output_path)
+                else:
+                    raise Exception(f"Excel to {output_format} conversion not supported")
+            
+            elif input_extension in ['pptx', 'ppt']:
+                if output_format == 'pdf':
+                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
+                    return await self.convert_ppt_to_pdf(input_path, output_path)
+                else:
+                    raise Exception(f"PowerPoint to {output_format} conversion not supported")
+            
+            elif input_extension in ['html', 'htm']:
+                if output_format == 'pdf':
+                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
+                    return await self.convert_html_to_pdf(input_path, output_path)
+                else:
+                    raise Exception(f"HTML to {output_format} conversion not supported")
+            
+            else:
+                raise Exception(f"Document conversion from {input_extension} to {output_format} not supported")
+                
+        except Exception as e:
+            logger.error(f"Document conversion error: {e}")
+            raise
     
     async def convert_pdf_to_txt(self, input_path, output_path):
         """Convert PDF to TXT using PyMuPDF for accurate text extraction"""
@@ -46,6 +112,25 @@ class DocumentConverter:
             return output_path
         except Exception as e:
             raise Exception(f"PDF to TXT conversion failed: {str(e)}")
+    
+    async def convert_docx_to_txt(self, input_path, output_path):
+        """Convert DOCX to TXT"""
+        try:
+            from docx import Document
+            
+            doc = Document(input_path)
+            text_content = []
+            
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    text_content.append(paragraph.text)
+            
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(text_content))
+            
+            return output_path
+        except Exception as e:
+            raise Exception(f"DOCX to TXT conversion failed: {str(e)}")
     
     async def convert_pdf_to_images(self, input_path, output_format='jpg'):
         """Convert PDF to images using pdf2image"""
@@ -168,6 +253,94 @@ class DocumentConverter:
         except Exception as e:
             raise Exception(f"Excel to PDF conversion failed: {str(e)}")
     
+    async def convert_ppt_to_pdf(self, input_path, output_path):
+        """Convert PowerPoint to PDF"""
+        try:
+            from pptx import Presentation
+            
+            # This is a basic implementation - in production you'd use better tools
+            prs = Presentation(input_path)
+            
+            # Create a simple PDF representation
+            c = canvas.Canvas(output_path, pagesize=letter)
+            width, height = letter
+            
+            for i, slide in enumerate(prs.slides):
+                if i > 0:
+                    c.showPage()
+                
+                c.setFont("Helvetica-Bold", 16)
+                c.drawString(50, height - 50, f"Slide {i+1}")
+                
+                y_position = height - 80
+                c.setFont("Helvetica", 12)
+                
+                # Extract text from slide
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text.strip():
+                        # Simple text wrapping
+                        words = shape.text.split()
+                        current_line = []
+                        
+                        for word in words:
+                            test_line = ' '.join(current_line + [word])
+                            if c.stringWidth(test_line, "Helvetica", 12) < (width - 100):
+                                current_line.append(word)
+                            else:
+                                if current_line:
+                                    c.drawString(50, y_position, ' '.join(current_line))
+                                    y_position -= 15
+                                current_line = [word]
+                        
+                        if current_line:
+                            c.drawString(50, y_position, ' '.join(current_line))
+                            y_position -= 20
+                
+                if y_position < 50:
+                    c.showPage()
+                    y_position = height - 50
+            
+            c.save()
+            return output_path
+        except Exception as e:
+            raise Exception(f"PowerPoint to PDF conversion failed: {str(e)}")
+    
+    async def convert_html_to_pdf(self, input_path, output_path):
+        """Convert HTML to PDF"""
+        try:
+            # Simple HTML to PDF conversion using reportlab
+            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
+                html_content = f.read()
+            
+            c = canvas.Canvas(output_path, pagesize=letter)
+            width, height = letter
+            
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(50, height - 50, "HTML to PDF Conversion")
+            
+            c.setFont("Helvetica", 12)
+            y_position = height - 80
+            
+            # Extract text content (basic implementation)
+            import re
+            text_content = re.sub('<[^<]+?>', '', html_content)  # Remove HTML tags
+            lines = text_content.split('\n')
+            
+            for line in lines[:50]:  # Limit content
+                if y_position < 50:
+                    c.showPage()
+                    y_position = height - 50
+                    c.setFont("Helvetica", 12)
+                
+                if line.strip():
+                    c.drawString(50, y_position, line[:80])  # Truncate long lines
+                    y_position -= 15
+            
+            c.save()
+            return output_path
+        except Exception as e:
+            raise Exception(f"HTML to PDF conversion failed: {str(e)}")
+    
     async def convert_txt_to_pdf(self, input_path, output_path):
         """Convert text file to PDF with proper formatting"""
         try:
@@ -247,24 +420,6 @@ class DocumentConverter:
             return output_path
         except Exception as e:
             raise Exception(f"PDF compression failed: {str(e)}")
-    
-    async def merge_pdfs(self, pdf_paths, output_path):
-        """Merge multiple PDFs"""
-        try:
-            writer = PdfWriter()
-            
-            for pdf_path in pdf_paths:
-                if os.path.exists(pdf_path):
-                    reader = PdfReader(pdf_path)
-                    for page in reader.pages:
-                        writer.add_page(page)
-            
-            with open(output_path, 'wb') as f:
-                writer.write(f)
-            
-            return output_path
-        except Exception as e:
-            raise Exception(f"PDF merge failed: {str(e)}")
     
     async def _fallback_pdf_to_docx(self, input_path, output_path):
         """Fallback PDF to DOCX using text extraction with PyMuPDF"""

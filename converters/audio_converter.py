@@ -3,6 +3,9 @@ import asyncio
 import subprocess
 import tempfile
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AudioConverter:
     def __init__(self):
