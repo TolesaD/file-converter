@@ -180,9 +180,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(parts) == 2:
             await start_auto_conversion(query, context, parts[0], parts[1], 'video')
     elif callback_data.startswith("auto_convert_"):
+        # FIXED: This handles smart conversion suggestions from direct uploads
         parts = callback_data.replace("auto_convert_", "").split("_")
         if len(parts) == 2:
-            await start_auto_conversion(query, context, parts[0], parts[1])
+            source_format, target_format = parts
+            file_type, _ = detect_file_type(source_format)
+            await start_auto_conversion(query, context, source_format, target_format, file_type)
     elif callback_data.startswith("convert_") or callback_data.startswith("filter_") or callback_data in ["compress_image", "resize_image", "crop_image", "rotate_image", "compress_audio", "trim_audio", "change_speed", "extract_audio", "compress_video", "trim_video", "compress_pdf"]:
         await start_conversion(query, context, callback_data)
     elif callback_data == "admin_panel":
@@ -341,7 +344,7 @@ async def start_auto_conversion(query, context, source_format, target_format, fi
     context.user_data['output_format'] = target_format
     context.user_data['file_type'] = file_type
     
-    logger.info(f"Starting auto conversion: {source_format} -> {target_format}")
+    logger.info(f"Starting auto conversion: {source_format} -> {target_format} (file_type: {file_type})")
     
     # Check if we already have a downloaded file from smart detection
     if 'detected_file_info' in context.user_data:
@@ -387,6 +390,15 @@ async def start_auto_conversion(query, context, source_format, target_format, fi
 Please upload your {source_format.upper()} file to start conversion.
             """
             await query.edit_message_text(message_text, parse_mode='Markdown')
+            
+            # Clean up old file if it exists but doesn't match
+            if 'detected_file_info' in context.user_data:
+                old_file_info = context.user_data.pop('detected_file_info')
+                if os.path.exists(old_file_info['path']):
+                    try:
+                        os.remove(old_file_info['path'])
+                    except:
+                        pass
     else:
         # No file available, ask user to upload
         context.user_data['expecting_followup_upload'] = True
