@@ -347,8 +347,8 @@ async def start_auto_conversion(query, context, source_format, target_format, fi
     if 'detected_file_info' in context.user_data:
         file_info = context.user_data['detected_file_info']
         
-        # Verify the file still exists
-        if os.path.exists(file_info['path']):
+        # Verify the file still exists and matches the selected format
+        if os.path.exists(file_info['path']) and file_info['extension'].lower() == source_format.lower():
             # We have a file ready to process!
             message_text = f"""
 ✅ *Smart Conversion Ready!*
@@ -362,24 +362,21 @@ async def start_auto_conversion(query, context, source_format, target_format, fi
             
             await query.edit_message_text(message_text, parse_mode='Markdown')
             
-            # Process the file immediately using the main handler
+            # Import the conversion handler
             from handlers.conversion import process_file_directly
             
-            # Create a simple update-like object
-            class SimpleUpdate:
-                def __init__(self, user_id):
-                    self.effective_user = type('User', (), {'id': user_id})()
-                    self.message = type('Message', (), {'reply_text': lambda text, **kwargs: query.edit_message_text(text, **kwargs)})()
-            
-            simple_update = SimpleUpdate(query.from_user.id)
-            
+            # Process the file immediately
             try:
-                await process_file_directly(simple_update, context, file_info['path'], source_format, query.from_user.id)
+                await process_file_directly(query, context, file_info['path'], source_format, query.from_user.id)
+                
+                # Clear the detected file info after successful processing
+                context.user_data.pop('detected_file_info', None)
+                
             except Exception as e:
                 logger.error(f"Error in immediate processing: {e}")
                 await query.edit_message_text(f"❌ Error starting conversion: {str(e)}")
         else:
-            # File doesn't exist anymore, ask for re-upload
+            # File doesn't exist or format doesn't match, ask for re-upload
             context.user_data['expecting_followup_upload'] = True
             message_text = f"""
 🧠 *Conversion Type Selected*

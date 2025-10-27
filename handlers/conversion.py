@@ -62,8 +62,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'size': file.file_size
         }
         
-        # ALWAYS detect file type and show suggestions for random uploads
-        # Only skip if this is a follow-up upload after conversion type selection
+        # Check if this is a follow-up upload after conversion type selection
         if context.user_data.get('expecting_followup_upload'):
             # This is a follow-up upload after conversion type selection
             context.user_data.pop('expecting_followup_upload', None)
@@ -154,6 +153,9 @@ async def process_file_directly(update, context, input_path, file_extension, use
                 "❌ Conversion type not set. Please select a conversion type first.",
                 reply_markup=get_main_menu_keyboard(user_id)
             )
+            # Clean up the file since we can't process it
+            if os.path.exists(input_path):
+                os.remove(input_path)
             return
         
         # Prepare job data
@@ -176,7 +178,11 @@ async def process_file_directly(update, context, input_path, file_extension, use
         queue_message += f"🎯 Conversion: `{file_extension.upper()} → {output_format.upper()}`\n\n"
         queue_message += "⏳ You'll receive progress updates shortly..."
         
-        await update.message.reply_text(queue_message, parse_mode='Markdown')
+        if hasattr(update, 'message'):
+            await update.message.reply_text(queue_message, parse_mode='Markdown')
+        else:
+            # Handle case when update is a callback query
+            await update.edit_message_text(queue_message, parse_mode='Markdown')
         
         # Clear conversion data but keep user context
         context.user_data.pop('conversion_type', None)
@@ -190,7 +196,12 @@ async def process_file_directly(update, context, input_path, file_extension, use
             
     except Exception as e:
         logger.error(f"Error processing file for user {user_id}: {e}")
-        await update.message.reply_text(f"❌ Error processing file: {str(e)}")
+        error_message = f"❌ Error processing file: {str(e)}"
+        
+        if hasattr(update, 'message'):
+            await update.message.reply_text(error_message)
+        else:
+            await update.edit_message_text(error_message)
         
         # Cleanup on error
         if os.path.exists(input_path):
