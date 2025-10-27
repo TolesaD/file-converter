@@ -2,3 +2,5 @@ ffmpeg
 libavcodec-extra
 imagemagick
 libmagickwand-dev
+ghostscript
+libreoffice

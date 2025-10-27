@@ -162,7 +162,7 @@ class QueueManager:
             await self.cleanup_files(job_data.get('input_path'))
     
     async def perform_conversion(self, job_data):
-        """Route to appropriate converter based on conversion type with comprehensive format support"""
+        """Universal conversion using converter router"""
         conversion_type = job_data['conversion_type']
         input_path = job_data['input_path']
         output_format = job_data['output_format']
@@ -177,59 +177,12 @@ class QueueManager:
         )
         
         try:
-            # Smart conversion routing for all formats
-            if conversion_type.startswith('auto_convert_'):
-                # Handle auto conversions from smart detection
-                parts = conversion_type.replace('auto_convert_', '').split('_')
-                if len(parts) == 2:
-                    source_fmt, target_fmt = parts
-                    return await self.convert_by_formats(input_path, source_fmt, target_fmt)
-            
-            # Manual conversion routing based on file categories
-            file_category = self._get_file_category(input_extension)
-            
-            if file_category == 'image':
-                return await img_converter.convert_format(input_path, output_format)
-            
-            elif file_category == 'audio':
-                return await audio_converter.convert_format(input_path, output_format)
-            
-            elif file_category == 'video':
-                return await video_converter.convert_format(input_path, output_format)
-            
-            elif file_category == 'document':
-                return await doc_converter.convert_document(input_path, output_format)
-            
-            else:
-                # Fallback for unknown formats
-                return await self.simple_convert(input_path, output_format)
+            # Use the universal converter router
+            from converters.converter_router import converter_router
+            return await converter_router.convert_file(input_path, output_format, input_extension)
                 
         except Exception as e:
             logger.error(f"Conversion error for job {job_data['job_id']}: {e}")
-            raise
-    
-    async def convert_by_formats(self, input_path, source_format, target_format):
-        """Convert based on source and target formats"""
-        try:
-            file_category = self._get_file_category(source_format)
-            
-            if file_category == 'image':
-                return await img_converter.convert_format(input_path, target_format)
-            
-            elif file_category == 'audio':
-                return await audio_converter.convert_format(input_path, target_format)
-            
-            elif file_category == 'video':
-                return await video_converter.convert_format(input_path, target_format)
-            
-            elif file_category == 'document':
-                return await doc_converter.convert_document(input_path, target_format)
-            
-            else:
-                return await self.simple_convert(input_path, target_format)
-            
-        except Exception as e:
-            logger.error(f"Format-based conversion error: {e}")
             raise
     
     def _get_file_category(self, file_extension):

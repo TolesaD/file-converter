@@ -42,12 +42,10 @@ class ConverterRouter:
             if not output_category:
                 raise Exception(f"Unsupported output format: {output_format}")
             
-            logger.info(f"Converting {input_extension} ({input_category}) to {output_format} ({output_category})")
-            
             # Special case: Images to PDF (document conversion)
             if input_category == 'image' and output_format == 'pdf':
-                output_path = input_path.rsplit('.', 1)[0] + '.pdf'
-                return await doc_converter.convert_images_to_pdf([input_path], output_path)
+                return await doc_converter.convert_images_to_pdf([input_path], 
+                    input_path.rsplit('.', 1)[0] + '.pdf')
             
             # Special case: PDF to images (image conversion)
             if input_extension == 'pdf' and output_format in ['jpg', 'jpeg', 'png', 'webp']:
@@ -61,34 +59,6 @@ class ConverterRouter:
             # Special case: Video to GIF
             if input_category == 'video' and output_format == 'gif':
                 return await video_converter.create_gif(input_path)
-            
-            # Special case: Any document to PDF
-            if output_format == 'pdf' and input_category == 'document':
-                if input_extension in ['docx', 'doc']:
-                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
-                    return await doc_converter.convert_docx_to_pdf(input_path, output_path)
-                elif input_extension == 'txt':
-                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
-                    return await doc_converter.convert_txt_to_pdf(input_path, output_path)
-                elif input_extension in ['xlsx', 'xls', 'csv']:
-                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
-                    return await doc_converter.convert_excel_to_pdf(input_path, output_path)
-                elif input_extension in ['pptx', 'ppt']:
-                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
-                    return await doc_converter.convert_ppt_to_pdf(input_path, output_path)
-                elif input_extension in ['html', 'htm']:
-                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
-                    return await doc_converter.convert_html_to_pdf(input_path, output_path)
-            
-            # Special case: PDF to text
-            if input_extension == 'pdf' and output_format == 'txt':
-                output_path = input_path.rsplit('.', 1)[0] + '.txt'
-                return await doc_converter.convert_pdf_to_txt(input_path, output_path)
-            
-            # Special case: PDF to DOCX
-            if input_extension == 'pdf' and output_format == 'docx':
-                output_path = input_path.rsplit('.', 1)[0] + '.docx'
-                return await doc_converter.convert_pdf_to_docx(input_path, output_path)
             
             # Route to appropriate converter
             if input_category in self.converters:
@@ -126,23 +96,6 @@ class ConverterRouter:
             supported.append('pdf')  # Images can convert to PDF
         elif input_extension == 'pdf':
             supported.extend(['jpg', 'png', 'docx', 'txt'])  # PDF can convert to these
-        elif input_category == 'video':
-            supported.extend(['mp3', 'wav'])  # Video can extract audio
-            supported.append('gif')  # Video can convert to GIF
-        
-        # Add basic format conversions within same category
-        if input_category == 'image':
-            basic_image_formats = ['jpg', 'png', 'webp', 'bmp']
-            supported.extend([fmt for fmt in basic_image_formats if fmt != input_extension])
-        elif input_category == 'audio':
-            basic_audio_formats = ['mp3', 'wav', 'ogg']
-            supported.extend([fmt for fmt in basic_audio_formats if fmt != input_extension])
-        elif input_category == 'video':
-            basic_video_formats = ['mp4', 'avi', 'mov']
-            supported.extend([fmt for fmt in basic_video_formats if fmt != input_extension])
-        elif input_category == 'document':
-            basic_doc_formats = ['pdf', 'txt']
-            supported.extend([fmt for fmt in basic_doc_formats if fmt != input_extension])
         
         return list(set(supported))  # Remove duplicates
 
