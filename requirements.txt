@@ -22,3 +22,5 @@ ffmpeg-python==0.2.0
 moviepy==1.0.3
 PyMuPDF==1.23.8
 docx2pdf==0.1.8
+cairosvg==2.7.1
+wand==0.6.13
