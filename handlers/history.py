@@ -13,7 +13,7 @@ async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not history:
         await update.message.reply_text(
             "📊 You haven't done any conversions yet!\nUse the menu to start converting files.",
-            reply_markup=get_main_menu_keyboard()
+            reply_markup=get_main_menu_keyboard(user_id)  # FIXED: Added user_id
         )
         return
     
@@ -41,7 +41,7 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
     if not history:
         await query.edit_message_text(
             "📊 You haven't done any conversions yet!",
-            reply_markup=get_main_menu_keyboard()
+            reply_markup=get_main_menu_keyboard(user_id)  # FIXED: Added user_id
         )
         return
     
@@ -60,9 +60,8 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
         status_emoji = "✅" if item['success'] else "❌"
         history_text += f"{i+1}. {status_emoji} {item['input_type']} → {item['output_type']}\n"
     
-    from utils.keyboard_utils import get_main_menu_keyboard
     await query.edit_message_text(
         history_text,
-        reply_markup=get_main_menu_keyboard(),
+        reply_markup=get_main_menu_keyboard(user_id),  # FIXED: Added user_id
         parse_mode='Markdown'
     )

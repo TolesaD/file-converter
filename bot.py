@@ -48,22 +48,14 @@ def main():
     application.add_handler(CommandHandler("stats", show_admin_stats))
     application.add_handler(CommandHandler("admin", admin_command))
     
-    # Callback query handlers - Fixed pattern matching
-    application.add_handler(CallbackQueryHandler(handle_callback, pattern="^(main_menu|menu_|help|commands|convert_|filter_|compress_|resize_|crop_|rotate_|trim_|change_speed|extract_|admin_panel|cancel|back|history|doc_format_|img_format_|audio_format_|video_format_|auto_convert_|convert_doc_|convert_img_|convert_audio_|convert_video_|none)$"))
-    application.add_handler(CallbackQueryHandler(handle_history_callback, pattern="^history$"))
-    application.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^admin_.*|^broadcast_confirm$"))
+    # Callback query handlers - FIXED: Simplified pattern matching
+    application.add_handler(CallbackQueryHandler(handle_callback))
     
-    # File handlers - Main file handler for initial uploads
+    # File handlers - FIXED: Only one main file handler
     application.add_handler(MessageHandler(
         filters.Document.ALL | filters.PHOTO | filters.AUDIO | filters.VIDEO,
         handle_file
     ))
-    
-    # Smart conversion file handler - for files uploaded after conversion type selection
-    application.add_handler(MessageHandler(
-        filters.Document.ALL | filters.PHOTO | filters.AUDIO | filters.VIDEO,
-        handle_smart_conversion_file
-    ), group=1)
     
     # Broadcast message handler
     application.add_handler(MessageHandler(
