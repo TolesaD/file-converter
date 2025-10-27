@@ -229,6 +229,3 @@ async def process_file_directly(update, context, input_path, file_extension, use
                 os.remove(input_path)
             except:
                 pass
-
-# Remove the handle_smart_conversion_file function since it's redundant
-# We'll use handle_file for all file uploads

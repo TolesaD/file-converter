@@ -6,7 +6,7 @@ from queue_manager import queue_manager
 
 # Import handlers
 from handlers.start import start_command, help_command, handle_callback, show_history
-from handlers.conversion import handle_file, handle_smart_conversion_file
+from handlers.conversion import handle_file  # FIXED: Removed handle_smart_conversion_file
 from handlers.history import show_history as show_user_history, handle_history_callback
 from handlers.admin import admin_command, show_admin_stats, handle_admin_callback, handle_broadcast_message, confirm_broadcast
 
