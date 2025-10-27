@@ -344,11 +344,12 @@ async def start_auto_conversion(query, context, source_format, target_format, fi
     
     # Check if we already have a downloaded file from smart detection
     if 'detected_file_info' in context.user_data:
-        # We have a file ready to process!
         file_info = context.user_data['detected_file_info']
-        input_path = file_info['path']
         
-        message_text = f"""
+        # Verify the file still exists
+        if os.path.exists(file_info['path']):
+            # We have a file ready to process!
+            message_text = f"""
 ✅ *Smart Conversion Ready!*
 
 📁 File: `{file_info['name']}`
@@ -356,6 +357,48 @@ async def start_auto_conversion(query, context, source_format, target_format, fi
 🎯 Target: {target_format.upper()}
 
 🔄 Starting conversion now...
+            """
+            
+            await query.edit_message_text(message_text, parse_mode='Markdown')
+            
+            # Process the file immediately using the main handler
+            from handlers.conversion import process_file_directly
+            
+            # Create a simple update-like object
+            class SimpleUpdate:
+                def __init__(self, user_id):
+                    self.effective_user = type('User', (), {'id': user_id})()
+                    self.message = type('Message', (), {'reply_text': lambda text, **kwargs: query.edit_message_text(text, **kwargs)})()
+            
+            simple_update = SimpleUpdate(query.from_user.id)
+            
+            try:
+                await process_file_directly(simple_update, context, file_info['path'], source_format, query.from_user.id)
+            except Exception as e:
+                logger.error(f"Error in immediate processing: {e}")
+                await query.edit_message_text(f"❌ Error starting conversion: {str(e)}")
+        else:
+            # File doesn't exist anymore, ask for re-upload
+            context.user_data['expecting_followup_upload'] = True
+            message_text = f"""
+🧠 *Conversion Type Selected*
+
+📁 File Type: {source_format.upper()} 
+🎯 Target Format: {target_format.upper()}
+
+Please upload your {source_format.upper()} file to start conversion.
+            """
+            await query.edit_message_text(message_text, parse_mode='Markdown')
+    else:
+        # No file available, ask user to upload
+        context.user_data['expecting_followup_upload'] = True
+        message_text = f"""
+🧠 *Conversion Type Selected*
+
+📁 File Type: {source_format.upper()} ({Config.FORMAT_CATEGORIES.get(file_type, '📁 File')})
+🎯 Target Format: {target_format.upper()}
+
+Please upload your {source_format.upper()} file to start conversion.
         """
         
         await query.edit_message_text(message_text, parse_mode='Markdown')

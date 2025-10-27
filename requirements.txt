@@ -12,9 +12,8 @@ markdown2==2.4.10
 pydub==0.25.1
 aiofiles==23.2.1
 aiohttp==3.9.1
-python-magic-bin==0.4.14
+python-magic==0.4.27
 psutil==5.9.6
-pywin32==306; sys_platform == 'win32'
 pdf2docx==0.5.8
 pdfplumber==0.10.3
 ebooklib==0.18

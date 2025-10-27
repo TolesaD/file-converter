@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle uploaded files with smart detection"""
+    """Handle uploaded files with smart detection - MAIN ENTRY POINT"""
     user = update.effective_user
     user_id = user.id
     
@@ -62,15 +62,15 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'size': file.file_size
         }
         
-        # If conversion type is already set, process directly
-        if 'conversion_type' in context.user_data and 'output_format' in context.user_data:
-            logger.info("Conversion type already set, processing directly")
+        # ALWAYS detect file type and show suggestions for random uploads
+        # Only skip if this is a follow-up upload after conversion type selection
+        if context.user_data.get('expecting_followup_upload'):
+            # This is a follow-up upload after conversion type selection
+            context.user_data.pop('expecting_followup_upload', None)
             await process_file_directly(update, context, input_path, file_extension, user_id)
-            return
-        
-        # Otherwise, detect file type and show suggestions
-        logger.info("No conversion type set, showing suggestions")
-        await detect_and_suggest_conversions(update, context, file_extension, file_name, user_id, input_path)
+        else:
+            # This is a random upload - show conversion options
+            await detect_and_suggest_conversions(update, context, file_extension, file_name, user_id, input_path)
             
     except Exception as e:
         logger.error(f"Error handling file for user {user_id}: {e}")
@@ -85,14 +85,13 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def detect_and_suggest_conversions(update, context, file_extension, file_name, user_id, input_path):
     """Detect file type and show conversion suggestions"""
-    progress_msg = await update.message.reply_text("🔍 Analyzing file type...")
     
     try:
         # Detect file type
         file_type, category_name = detect_file_type(file_extension)
         
         if file_type == 'unknown':
-            await progress_msg.edit_text(
+            await update.message.reply_text(
                 f"❌ Unknown file type: .{file_extension}\n\n"
                 f"Please use the menu to select conversion type manually.",
                 reply_markup=get_main_menu_keyboard(user_id)
@@ -123,7 +122,7 @@ async def detect_and_suggest_conversions(update, context, file_extension, file_n
 💡 *I can convert this to:*
         """
         
-        await progress_msg.edit_text(
+        await update.message.reply_text(
             suggestion_text,
             reply_markup=get_format_suggestions_keyboard(file_extension, file_type),
             parse_mode='Markdown'
@@ -131,7 +130,7 @@ async def detect_and_suggest_conversions(update, context, file_extension, file_n
         
     except Exception as e:
         logger.error(f"Error in file detection: {e}")
-        await progress_msg.edit_text(f"❌ Error analyzing file: {str(e)}")
+        await update.message.reply_text(f"❌ Error analyzing file: {str(e)}")
         
         # Cleanup on error
         if os.path.exists(input_path):
@@ -142,7 +141,6 @@ async def detect_and_suggest_conversions(update, context, file_extension, file_n
 
 async def process_file_directly(update, context, input_path, file_extension, user_id):
     """Process file when conversion type is already selected"""
-    progress_msg = await update.message.reply_text("🔄 Processing your file...")
     
     try:
         # Get conversion details from context
@@ -150,6 +148,13 @@ async def process_file_directly(update, context, input_path, file_extension, use
         output_format = context.user_data.get('output_format', '')
         
         logger.info(f"Processing file: {conversion_type} -> {output_format}")
+        
+        if not conversion_type or not output_format:
+            await update.message.reply_text(
+                "❌ Conversion type not set. Please select a conversion type first.",
+                reply_markup=get_main_menu_keyboard(user_id)
+            )
+            return
         
         # Prepare job data
         job_data = {
@@ -165,12 +170,13 @@ async def process_file_directly(update, context, input_path, file_extension, use
         job_id, queue_position = await queue_manager.add_to_queue(job_data)
         
         # Send queue confirmation
-        queue_message = f"📋 File added to processing queue!\n"
-        queue_message += f"🆔 Job ID: {job_id}\n"
-        queue_message += f"📊 Queue position: {queue_position}\n"
-        queue_message += "⏳ You'll receive updates when processing starts..."
+        queue_message = f"✅ *File queued for processing!*\n\n"
+        queue_message += f"🆔 Job ID: `{job_id}`\n"
+        queue_message += f"📊 Queue position: `{queue_position}`\n"
+        queue_message += f"🎯 Conversion: `{file_extension.upper()} → {output_format.upper()}`\n\n"
+        queue_message += "⏳ You'll receive progress updates shortly..."
         
-        await progress_msg.edit_text(queue_message)
+        await update.message.reply_text(queue_message, parse_mode='Markdown')
         
         # Clear conversion data but keep user context
         context.user_data.pop('conversion_type', None)
@@ -178,12 +184,13 @@ async def process_file_directly(update, context, input_path, file_extension, use
         context.user_data.pop('file_type', None)
         context.user_data.pop('last_downloaded_file', None)
         context.user_data.pop('detected_file_info', None)
+        context.user_data.pop('expecting_followup_upload', None)
         
         logger.info(f"✅ File queued for user {user_id}, job {job_id}")
             
     except Exception as e:
         logger.error(f"Error processing file for user {user_id}: {e}")
-        await progress_msg.edit_text(f"❌ Error: {str(e)}")
+        await update.message.reply_text(f"❌ Error processing file: {str(e)}")
         
         # Cleanup on error
         if os.path.exists(input_path):
@@ -198,14 +205,6 @@ async def handle_smart_conversion_file(update: Update, context: ContextTypes.DEF
     user_id = user.id
     
     logger.info(f"Smart conversion file upload from user {user_id}")
-    
-    # Check if we have a conversion type selected
-    if 'conversion_type' not in context.user_data or 'output_format' not in context.user_data:
-        await update.message.reply_text(
-            "❌ Please select a conversion type first! Use the buttons above.",
-            reply_markup=get_main_menu_keyboard(user_id)
-        )
-        return
     
     # Get file information
     if update.message.document:
