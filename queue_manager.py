@@ -3,11 +3,6 @@ import os
 from datetime import datetime
 from database import db
 from config import Config
-from converters.document_converter import doc_converter
-from converters.image_converter import img_converter
-from converters.audio_converter import audio_converter
-from converters.video_converter import video_converter
-from telegram import Bot
 import logging
 
 logger = logging.getLogger(__name__)
@@ -177,7 +172,7 @@ class QueueManager:
         )
         
         try:
-            # Use the universal converter router
+            # Import here to avoid circular imports
             from converters.converter_router import converter_router
             return await converter_router.convert_file(input_path, output_format, input_extension)
                 
@@ -185,70 +180,12 @@ class QueueManager:
             logger.error(f"Conversion error for job {job_data['job_id']}: {e}")
             raise
     
-    def _get_file_category(self, file_extension):
-        """Determine file category from extension"""
-        for category, extensions in Config.SUPPORTED_FORMATS.items():
-            if file_extension.lower() in extensions:
-                return category
-        return 'unknown'
-    
-    async def convert_by_formats(self, input_path, source_format, target_format):
-        """Convert based on source and target formats"""
-        try:
-            if source_format == 'pdf':
-                if target_format == 'txt':
-                    output_path = input_path.rsplit('.', 1)[0] + '.txt'
-                    return await doc_converter.convert_pdf_to_txt(input_path, output_path)
-                elif target_format == 'docx':
-                    output_path = input_path.rsplit('.', 1)[0] + '.docx'
-                    return await doc_converter.convert_pdf_to_docx(input_path, output_path)
-                elif target_format in ['jpg', 'png']:
-                    images = await doc_converter.convert_pdf_to_images(input_path, target_format)
-                    return images[0] if images else None
-            
-            elif source_format in ['jpg', 'jpeg', 'png', 'webp']:
-                if target_format in ['jpg', 'jpeg', 'png', 'webp']:
-                    return await img_converter.convert_format(input_path, target_format)
-                elif target_format == 'pdf':
-                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
-                    return await doc_converter.convert_images_to_pdf([input_path], output_path)
-            
-            elif source_format in ['mp3', 'wav']:
-                if target_format in ['mp3', 'wav']:
-                    return await audio_converter.convert_format(input_path, target_format)
-            
-            # Fallback to simple conversion
-            return await self.simple_convert(input_path, target_format)
-            
-        except Exception as e:
-            logger.error(f"Format-based conversion error: {e}")
-            raise
-    
-    async def simple_convert(self, input_path, output_format):
-        """Simple file conversion fallback with better error handling"""
-        try:
-            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
-            
-            if output_format == 'txt' and input_path.endswith('.pdf'):
-                # Use proper PDF to TXT conversion
-                return await doc_converter.convert_pdf_to_txt(input_path, output_path)
-            elif output_format == 'pdf' and input_path.endswith(('.txt', '.docx')):
-                # Use proper document to PDF conversion
-                if input_path.endswith('.txt'):
-                    return await doc_converter.convert_txt_to_pdf(input_path, output_path)
-                else:
-                    return await doc_converter.convert_docx_to_pdf(input_path, output_path)
-            else:
-                # For unsupported conversions, provide informative error
-                raise Exception(f"Conversion from {input_path.split('.')[-1]} to {output_format} is not supported yet")
-            
-        except Exception as e:
-            logger.error(f"Simple conversion error: {e}")
-            raise
-    
     async def send_status_update(self, user_id, job_id, message, progress, file_path=None):
         """Send status update to user"""
         try:
+            # Import here to avoid circular imports
+            from telegram import Bot
+            
             bot = Bot(Config.BOT_TOKEN)
             
             # Get queue info

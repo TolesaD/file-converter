@@ -2,11 +2,10 @@ import os
 import logging
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from config import Config
-from queue_manager import queue_manager
 
-# Import handlers
+# Import handlers - keep these at top level
 from handlers.start import start_command, help_command, handle_callback, show_history
-from handlers.conversion import handle_file  # FIXED: Removed handle_smart_conversion_file
+from handlers.conversion import handle_file
 from handlers.history import show_history as show_user_history, handle_history_callback
 from handlers.admin import admin_command, show_admin_stats, handle_admin_callback, handle_broadcast_message, confirm_broadcast
 
@@ -27,6 +26,8 @@ async def post_init(application):
         ])
         print("✅ Bot commands have been set successfully!")
         
+        # Import queue manager here to avoid circular imports
+        from queue_manager import queue_manager
         # Start queue manager in background
         asyncio.create_task(queue_manager.process_queue())
         print("🚀 Queue manager started")
@@ -48,10 +49,10 @@ def main():
     application.add_handler(CommandHandler("stats", show_admin_stats))
     application.add_handler(CommandHandler("admin", admin_command))
     
-    # Callback query handlers - FIXED: Simplified pattern matching
+    # Callback query handlers
     application.add_handler(CallbackQueryHandler(handle_callback))
     
-    # File handlers - FIXED: Only one main file handler
+    # File handlers
     application.add_handler(MessageHandler(
         filters.Document.ALL | filters.PHOTO | filters.AUDIO | filters.VIDEO,
         handle_file
