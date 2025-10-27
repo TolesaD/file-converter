@@ -22,6 +22,7 @@ from utils.keyboard_utils import (
     get_admin_keyboard
 )
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -394,32 +395,6 @@ Please upload your {source_format.upper()} file to start conversion.
         context.user_data['expecting_followup_upload'] = True
         message_text = f"""
 🧠 *Conversion Type Selected*
-
-📁 File Type: {source_format.upper()} ({Config.FORMAT_CATEGORIES.get(file_type, '📁 File')})
-🎯 Target Format: {target_format.upper()}
-
-Please upload your {source_format.upper()} file to start conversion.
-        """
-        
-        await query.edit_message_text(message_text, parse_mode='Markdown')
-        
-        # Import here to avoid circular imports
-        from handlers.conversion import process_file_directly
-        
-        # Create a mock update object for processing
-        class MockUpdate:
-            def __init__(self, user_id):
-                self.effective_user = type('User', (), {'id': user_id})()
-        
-        mock_update = MockUpdate(query.from_user.id)
-        
-        # Process the file immediately
-        await process_file_directly(mock_update, context, input_path, source_format, query.from_user.id)
-        
-    else:
-        # No file available, ask user to upload
-        message_text = f"""
-🧠 *Smart Conversion Selected*
 
 📁 File Type: {source_format.upper()} ({Config.FORMAT_CATEGORIES.get(file_type, '📁 File')})
 🎯 Target Format: {target_format.upper()}
