@@ -149,10 +149,24 @@ async def process_file_directly(update, context, input_path, file_extension, use
         logger.info(f"Processing file: {conversion_type} -> {output_format}")
         
         if not conversion_type or not output_format:
-            await update.message.reply_text(
-                "❌ Conversion type not set. Please select a conversion type first.",
-                reply_markup=get_main_menu_keyboard(user_id)
-            )
+            error_msg = "❌ Conversion type not set. Please select a conversion type first."
+            
+            # Handle different types of update objects
+            if hasattr(update, 'message') and update.message:
+                await update.message.reply_text(
+                    error_msg,
+                    reply_markup=get_main_menu_keyboard(user_id)
+                )
+            elif hasattr(update, 'edit_message_text'):
+                # It's a callback query
+                await update.edit_message_text(
+                    error_msg,
+                    reply_markup=get_main_menu_keyboard(user_id)
+                )
+            else:
+                # Fallback
+                logger.error(f"Cannot send error message for user {user_id}")
+            
             # Clean up the file since we can't process it
             if os.path.exists(input_path):
                 os.remove(input_path)
@@ -178,11 +192,14 @@ async def process_file_directly(update, context, input_path, file_extension, use
         queue_message += f"🎯 Conversion: `{file_extension.upper()} → {output_format.upper()}`\n\n"
         queue_message += "⏳ You'll receive progress updates shortly..."
         
-        if hasattr(update, 'message'):
+        # Handle different types of update objects
+        if hasattr(update, 'message') and update.message:
             await update.message.reply_text(queue_message, parse_mode='Markdown')
-        else:
-            # Handle case when update is a callback query
+        elif hasattr(update, 'edit_message_text'):
+            # It's a callback query
             await update.edit_message_text(queue_message, parse_mode='Markdown')
+        else:
+            logger.error(f"Cannot send queue message for user {user_id}")
         
         # Clear conversion data but keep user context
         context.user_data.pop('conversion_type', None)
@@ -198,65 +215,16 @@ async def process_file_directly(update, context, input_path, file_extension, use
         logger.error(f"Error processing file for user {user_id}: {e}")
         error_message = f"❌ Error processing file: {str(e)}"
         
-        if hasattr(update, 'message'):
+        # Handle different types of update objects
+        if hasattr(update, 'message') and update.message:
             await update.message.reply_text(error_message)
-        else:
+        elif hasattr(update, 'edit_message_text'):
             await update.edit_message_text(error_message)
+        else:
+            logger.error(f"Cannot send error message for user {user_id}")
         
         # Cleanup on error
         if os.path.exists(input_path):
-            try:
-                os.remove(input_path)
-            except:
-                pass
-
-async def handle_smart_conversion_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle file upload after smart conversion type selection"""
-    user = update.effective_user
-    user_id = user.id
-    
-    logger.info(f"Smart conversion file upload from user {user_id}")
-    
-    # Get file information
-    if update.message.document:
-        file = update.message.document
-        file_extension = file.file_name.split('.')[-1].lower() if file.file_name else 'bin'
-    elif update.message.photo:
-        file = update.message.photo[-1]
-        file_extension = 'jpg'
-    elif update.message.audio:
-        file = update.message.audio
-        file_extension = 'mp3'
-    elif update.message.video:
-        file = update.message.video
-        file_extension = 'mp4'
-    else:
-        await update.message.reply_text("❌ Unsupported file type!")
-        return
-    
-    # Check file size
-    if file.file_size > 50 * 1024 * 1024:
-        await update.message.reply_text("❌ File too large! Maximum size is 50MB.")
-        return
-    
-    # Download and process the file
-    progress_msg = await update.message.reply_text("📥 Downloading your file...")
-    
-    try:
-        file_obj = await file.get_file()
-        input_path = f"temp/uploads/{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_extension}"
-        await file_obj.download_to_drive(input_path)
-        
-        logger.info(f"Smart conversion file downloaded to: {input_path}")
-        
-        await process_file_directly(update, context, input_path, file_extension, user_id)
-            
-    except Exception as e:
-        logger.error(f"Error in smart conversion for user {user_id}: {e}")
-        await progress_msg.edit_text(f"❌ Error: {str(e)}")
-        
-        # Cleanup on error
-        if 'input_path' in locals() and os.path.exists(input_path):
             try:
                 os.remove(input_path)
             except:
