@@ -91,7 +91,7 @@ class QueueManager:
             logger.info("🛑 Queue processor stopped")
     
     async def process_job(self, job_data):
-        """Process a single conversion job"""
+        """Process a single conversion job with timeout"""
         try:
             logger.info(f"Starting conversion for job {job_data['job_id']}")
             
@@ -103,8 +103,14 @@ class QueueManager:
                 20
             )
             
-            # Perform conversion
-            output_path = await self.perform_conversion(job_data)
+            # Perform conversion with overall timeout
+            try:
+                output_path = await asyncio.wait_for(
+                    self.perform_conversion(job_data),
+                    timeout=300  # 5 minute overall timeout
+                )
+            except asyncio.TimeoutError:
+                raise Exception("Conversion timeout - process took too long")
             
             if output_path and os.path.exists(output_path):
                 # Update job status
