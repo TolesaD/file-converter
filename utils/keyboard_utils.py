@@ -1,5 +1,8 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import Config
+import logging
+
+logger = logging.getLogger(__name__)
 
 def get_main_menu_keyboard(user_id=None):
     """Main menu with admin button only for admins"""
@@ -23,56 +26,47 @@ def get_commands_keyboard():
         [InlineKeyboardButton("/start - Start bot", callback_data="none")],
         [InlineKeyboardButton("/help - Get help", callback_data="none")],
         [InlineKeyboardButton("/history - View history", callback_data="none")],
-        [InlineKeyboardButton("/stats - System stats", callback_data="none")],
-        [InlineKeyboardButton("/admin - Admin panel", callback_data="none")],
         [InlineKeyboardButton("📋 Back to Main Menu", callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_format_suggestions_keyboard(file_extension, file_type):
     """Show conversion options for detected file type"""
-    from converters.converter_router import converter_router
-    import asyncio
-    
     keyboard = []
     
-    # Get supported conversions
-    try:
-        # Run async function in sync context
-        supported_formats = asyncio.run(converter_router.get_supported_conversions(file_extension))
-        
-        # Create buttons for supported formats
-        row = []
-        for i, target_format in enumerate(supported_formats[:9]):  # Max 9 options
-            row.append(InlineKeyboardButton(
-                f"🔄 {file_extension.upper()} → {target_format.upper()}", 
-                callback_data=f"auto_convert_{file_extension}_{target_format}"
-            ))
-            if len(row) == 3:
-                keyboard.append(row)
-                row = []
-        
-        if row:
-            keyboard.append(row)
-            
-    except Exception as e:
-        logger.error(f"Error getting supported formats: {e}")
-        # Fallback to basic options
-        basic_formats = ['pdf', 'jpg', 'png', 'mp3', 'mp4']
-        row = []
-        for fmt in basic_formats:
-            if fmt != file_extension:
-                row.append(InlineKeyboardButton(
-                    f"🔄 {file_extension.upper()} → {fmt.upper()}", 
-                    callback_data=f"auto_convert_{file_extension}_{fmt}"
-                ))
-                if len(row) == 3:
-                    keyboard.append(row)
-                    row = []
-        if row:
-            keyboard.append(row)
+    # Get supported conversions from CONVERSION_MAP
+    supported_formats = []
     
-    # Add browse button
+    if file_type in Config.CONVERSION_MAP:
+        if file_extension in Config.CONVERSION_MAP[file_type]:
+            supported_formats = Config.CONVERSION_MAP[file_type][file_extension]
+    
+    # Add cross-category conversions
+    if file_type == 'image':
+        supported_formats.append('pdf')  # Images to PDF
+    elif file_extension == 'pdf':
+        supported_formats.extend(['jpg', 'png', 'docx', 'txt'])  # PDF to various
+    elif file_type == 'video':
+        supported_formats.extend(['mp3', 'gif'])  # Video to audio/GIF
+    
+    # Remove duplicates and limit to 9 options
+    supported_formats = list(set(supported_formats))[:9]
+    
+    # Create buttons for supported formats
+    row = []
+    for i, target_format in enumerate(supported_formats):
+        row.append(InlineKeyboardButton(
+            f"🔄 {file_extension.upper()} → {target_format.upper()}", 
+            callback_data=f"auto_convert_{file_extension}_{target_format}"
+        ))
+        if len(row) == 3:
+            keyboard.append(row)
+            row = []
+    
+    if row:
+        keyboard.append(row)
+    
+    # Add browse button based on file type
     if file_type == 'document':
         keyboard.append([InlineKeyboardButton("📄 Browse All Document Formats", callback_data="menu_all_documents")])
     elif file_type == 'image':
@@ -84,6 +78,22 @@ def get_format_suggestions_keyboard(file_extension, file_type):
     
     keyboard.append([InlineKeyboardButton("📋 Back to Main Menu", callback_data="main_menu")])
     
+    return InlineKeyboardMarkup(keyboard)
+
+def get_document_conversion_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("📋 PDF to DOCX", callback_data="convert_pdf_docx"),
+         InlineKeyboardButton("🖼️ PDF to Images", callback_data="convert_pdf_images")],
+        [InlineKeyboardButton("📄 DOCX to PDF", callback_data="convert_docx_pdf"),
+         InlineKeyboardButton("📊 Excel to PDF", callback_data="convert_excel_pdf")],
+        [InlineKeyboardButton("📊 PPT to PDF", callback_data="convert_ppt_pdf"),
+         InlineKeyboardButton("🖼️ Images to PDF", callback_data="convert_images_pdf")],
+        [InlineKeyboardButton("📝 TXT to PDF", callback_data="convert_txt_pdf"),
+         InlineKeyboardButton("🔒 Compress PDF", callback_data="compress_pdf")],
+        [InlineKeyboardButton("🌐 HTML to PDF", callback_data="convert_html_pdf"),
+         InlineKeyboardButton("📋 All Formats", callback_data="menu_all_documents")],
+        [InlineKeyboardButton("📋 Back to Main Menu", callback_data="main_menu")]
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_all_documents_keyboard():
