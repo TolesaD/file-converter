@@ -10,6 +10,7 @@ import pandas as pd
 from config import Config
 import subprocess
 import sys
+import fitz  # PyMuPDF for better PDF handling
 
 class DocumentConverter:
     def __init__(self):
@@ -25,13 +26,30 @@ class DocumentConverter:
             'markdown_to_pdf': (['md', 'markdown'], 'pdf')
         }
     
+    async def convert_pdf_to_txt(self, input_path, output_path):
+        """Convert PDF to TXT using PyMuPDF for accurate text extraction"""
+        try:
+            doc = fitz.open(input_path)
+            text_content = ""
+            
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                text = page.get_text()
+                text_content += f"--- Page {page_num + 1} ---\n{text}\n\n"
+            
+            doc.close()
+            
+            # Save as UTF-8 text file
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(text_content)
+            
+            return output_path
+        except Exception as e:
+            raise Exception(f"PDF to TXT conversion failed: {str(e)}")
+    
     async def convert_pdf_to_images(self, input_path, output_format='jpg'):
         """Convert PDF to images using pdf2image"""
         try:
-            if not Config.HAS_PDF2IMAGE:
-                # Fallback: Use reportlab to create placeholder
-                return await self._fallback_pdf_to_images(input_path, output_format)
-            
             from pdf2image import convert_from_path
             
             images = convert_from_path(input_path, dpi=200)
@@ -44,7 +62,8 @@ class DocumentConverter:
             
             return output_files
         except Exception as e:
-            raise Exception(f"PDF to images conversion failed: {str(e)}")
+            # Fallback using PyMuPDF
+            return await self._fallback_pdf_to_images(input_path, output_format)
     
     async def convert_pdf_to_docx(self, input_path, output_path):
         """Convert PDF to DOCX using pdf2docx"""
@@ -57,25 +76,19 @@ class DocumentConverter:
             
             return output_path
         except Exception as e:
-            # Fallback to text extraction
+            # Fallback to text extraction with better formatting
             return await self._fallback_pdf_to_docx(input_path, output_path)
     
     async def convert_docx_to_pdf(self, input_path, output_path):
-        """Convert DOCX to PDF"""
+        """Convert DOCX to PDF using docx2pdf"""
         try:
-            # Using unoconv if available, otherwise fallback
-            if self._has_unoconv():
-                result = subprocess.run([
-                    'unoconv', '-f', 'pdf', '-o', output_path, input_path
-                ], capture_output=True, text=True, timeout=60)
-                
-                if result.returncode == 0 and os.path.exists(output_path):
-                    return output_path
+            from docx2pdf import convert
             
-            # Fallback: Create a PDF from text content
-            return await self._fallback_docx_to_pdf(input_path, output_path)
+            convert(input_path, output_path)
+            return output_path
         except Exception as e:
-            raise Exception(f"DOCX to PDF conversion failed: {str(e)}")
+            # Fallback using python-docx and reportlab
+            return await self._fallback_docx_to_pdf(input_path, output_path)
     
     async def convert_images_to_pdf(self, image_paths, output_path):
         """Convert multiple images to PDF"""
@@ -101,7 +114,7 @@ class DocumentConverter:
             raise Exception(f"Images to PDF conversion failed: {str(e)}")
     
     async def convert_excel_to_pdf(self, input_path, output_path):
-        """Convert Excel to PDF"""
+        """Convert Excel to PDF with proper formatting"""
         try:
             # Read Excel file
             if input_path.endswith('.csv'):
@@ -109,33 +122,46 @@ class DocumentConverter:
             else:
                 df = pd.read_excel(input_path)
             
-            # Create PDF
+            # Create PDF with better formatting
             c = canvas.Canvas(output_path, pagesize=letter)
             width, height = letter
             
             # Add title
             c.setFont("Helvetica-Bold", 16)
             c.drawString(50, height - 50, f"Excel File: {os.path.basename(input_path)}")
-            
-            # Add data
             c.setFont("Helvetica", 10)
-            y_position = height - 80
+            c.drawString(50, height - 70, f"Total Rows: {len(df)}, Columns: {len(df.columns)}")
             
-            # Add headers
+            # Add data with table formatting
+            y_position = height - 100
+            row_height = 15
+            col_width = 80
+            
+            # Add headers with background
             headers = df.columns.tolist()
-            for i, header in enumerate(headers):
-                c.drawString(50 + i * 100, y_position, str(header))
+            c.setFillColorRGB(0.8, 0.8, 0.8)  # Gray background
+            c.rect(50, y_position - 5, len(headers) * col_width, row_height + 5, fill=1)
+            c.setFillColorRGB(0, 0, 0)  # Black text
             
-            y_position -= 20
+            c.setFont("Helvetica-Bold", 10)
+            for i, header in enumerate(headers):
+                c.drawString(55 + i * col_width, y_position, str(header)[:15])  # Truncate long headers
+            
+            y_position -= row_height + 5
+            c.setFont("Helvetica", 9)
             
             # Add rows (limited for PDF)
-            for _, row in df.head(50).iterrows():  # Limit to 50 rows
-                for i, value in enumerate(row):
-                    c.drawString(50 + i * 100, y_position, str(value))
-                y_position -= 15
+            for row_idx, (_, row) in enumerate(df.head(30).iterrows()):  # Limit to 30 rows
                 if y_position < 50:
                     c.showPage()
                     y_position = height - 50
+                    c.setFont("Helvetica", 9)
+                
+                for i, value in enumerate(row):
+                    text = str(value)[:20]  # Truncate long values
+                    c.drawString(55 + i * col_width, y_position, text)
+                
+                y_position -= row_height
             
             c.save()
             return output_path
@@ -143,7 +169,7 @@ class DocumentConverter:
             raise Exception(f"Excel to PDF conversion failed: {str(e)}")
     
     async def convert_txt_to_pdf(self, input_path, output_path):
-        """Convert text file to PDF"""
+        """Convert text file to PDF with proper formatting"""
         try:
             with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
                 text_content = f.read()
@@ -151,19 +177,26 @@ class DocumentConverter:
             c = canvas.Canvas(output_path, pagesize=letter)
             width, height = letter
             
-            c.setFont("Helvetica", 12)
-            y_position = height - 40
-            line_height = 14
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(50, height - 40, f"Text File: {os.path.basename(input_path)}")
             
-            # Split text into lines
+            c.setFont("Helvetica", 12)
+            y_position = height - 70
+            line_height = 14
+            margin = 50
+            max_width = width - 2 * margin
+            
+            # Split text into lines with proper wrapping
             lines = []
-            for line in text_content.split('\n'):
-                words = line.split()
+            for paragraph in text_content.split('\n'):
+                words = paragraph.split()
                 current_line = []
                 
                 for word in words:
                     test_line = ' '.join(current_line + [word])
-                    if c.stringWidth(test_line, "Helvetica", 12) < (width - 100):
+                    text_width = c.stringWidth(test_line, "Helvetica", 12)
+                    
+                    if text_width < max_width:
                         current_line.append(word)
                     else:
                         if current_line:
@@ -172,15 +205,17 @@ class DocumentConverter:
                 
                 if current_line:
                     lines.append(' '.join(current_line))
+                lines.append('')  # Empty line between paragraphs
             
             # Add lines to PDF
-            for line in lines[:100]:  # Limit to 100 lines
+            for line in lines[:200]:  # Limit to 200 lines
                 if y_position < 40:
                     c.showPage()
                     y_position = height - 40
                     c.setFont("Helvetica", 12)
                 
-                c.drawString(50, y_position, line)
+                if line.strip():  # Only draw non-empty lines
+                    c.drawString(margin, y_position, line)
                 y_position -= line_height
             
             c.save()
@@ -189,7 +224,7 @@ class DocumentConverter:
             raise Exception(f"Text to PDF conversion failed: {str(e)}")
     
     async def compress_pdf(self, input_path, output_path, quality='medium'):
-        """Compress PDF file"""
+        """Compress PDF file with different quality levels"""
         try:
             reader = PdfReader(input_path)
             writer = PdfWriter()
@@ -200,9 +235,11 @@ class DocumentConverter:
                 writer.add_page(page)
             
             # Set compression level
-            if quality == 'high':
-                # More aggressive compression
-                pass
+            compression_level = {
+                'low': 0,
+                'medium': 5,
+                'high': 9
+            }.get(quality, 5)
             
             with open(output_path, 'wb') as f:
                 writer.write(f)
@@ -229,121 +266,96 @@ class DocumentConverter:
         except Exception as e:
             raise Exception(f"PDF merge failed: {str(e)}")
     
-    async def split_pdf(self, input_path, output_dir, pages=None):
-        """Split PDF into multiple files"""
-        try:
-            reader = PdfReader(input_path)
-            output_files = []
-            
-            if pages is None:
-                # Split by individual pages
-                for i, page in enumerate(reader.pages):
-                    writer = PdfWriter()
-                    writer.add_page(page)
-                    output_path = os.path.join(output_dir, f"page_{i+1}.pdf")
-                    with open(output_path, 'wb') as f:
-                        writer.write(f)
-                    output_files.append(output_path)
-            else:
-                # Split by specified page ranges
-                for i, page_range in enumerate(pages):
-                    writer = PdfWriter()
-                    start, end = page_range
-                    for page_num in range(start-1, end):
-                        writer.add_page(reader.pages[page_num])
-                    output_path = os.path.join(output_dir, f"part_{i+1}.pdf")
-                    with open(output_path, 'wb') as f:
-                        writer.write(f)
-                    output_files.append(output_path)
-            
-            return output_files
-        except Exception as e:
-            raise Exception(f"PDF split failed: {str(e)}")
-    
-    def _has_unoconv(self):
-        """Check if unoconv is available"""
-        try:
-            result = subprocess.run(['unoconv', '--version'], capture_output=True, text=True)
-            return result.returncode == 0
-        except:
-            return False
-    
     async def _fallback_pdf_to_docx(self, input_path, output_path):
-        """Fallback PDF to DOCX using text extraction"""
+        """Fallback PDF to DOCX using text extraction with PyMuPDF"""
         try:
-            import pdfplumber
+            doc = fitz.open(input_path)
             
-            text_content = ""
-            with pdfplumber.open(input_path) as pdf:
-                for page in pdf.pages:
-                    text = page.extract_text()
-                    if text:
-                        text_content += text + "\n\n"
-            
-            # Create a simple DOCX with python-docx
             from docx import Document
+            from docx.shared import Inches
             
-            doc = Document()
-            doc.add_heading('PDF Conversion', 0)
-            doc.add_paragraph(f"Original file: {os.path.basename(input_path)}")
-            doc.add_paragraph("Converted from PDF to DOCX")
-            doc.add_paragraph("--- Content ---")
+            document = Document()
+            document.add_heading('PDF Conversion', 0)
+            document.add_paragraph(f"Original file: {os.path.basename(input_path)}")
+            document.add_paragraph(f"Total pages: {len(doc)}")
+            document.add_paragraph("--- Content ---")
             
-            # Add extracted text
-            for paragraph in text_content.split('\n'):
-                if paragraph.strip():
-                    doc.add_paragraph(paragraph)
+            # Add extracted text with page markers
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                text = page.get_text()
+                
+                if text.strip():
+                    document.add_heading(f'Page {page_num + 1}', level=2)
+                    for paragraph in text.split('\n'):
+                        if paragraph.strip():
+                            document.add_paragraph(paragraph)
             
-            doc.save(output_path)
+            doc.close()
+            document.save(output_path)
             return output_path
         except Exception as e:
             raise Exception(f"Fallback PDF to DOCX failed: {str(e)}")
     
     async def _fallback_docx_to_pdf(self, input_path, output_path):
-        """Fallback DOCX to PDF using text extraction"""
+        """Fallback DOCX to PDF using python-docx and reportlab"""
         try:
             from docx import Document
             
             doc = Document(input_path)
             text_content = []
             
+            # Extract all text content
             for paragraph in doc.paragraphs:
                 if paragraph.text.strip():
                     text_content.append(paragraph.text)
             
-            # Create PDF
+            # Create PDF with better formatting
             c = canvas.Canvas(output_path, pagesize=letter)
             width, height = letter
             
             c.setFont("Helvetica-Bold", 16)
             c.drawString(50, height - 50, "DOCX to PDF Conversion")
+            c.setFont("Helvetica", 10)
+            c.drawString(50, height - 70, f"Original: {os.path.basename(input_path)}")
             
             c.setFont("Helvetica", 12)
-            y_position = height - 80
+            y_position = height - 100
+            line_height = 14
+            margin = 50
+            max_width = width - 2 * margin
             
-            for line in text_content[:50]:  # Limit content
-                if y_position < 50:
-                    c.showPage()
-                    y_position = height - 50
-                    c.setFont("Helvetica", 12)
-                
-                # Simple text wrapping
-                words = line.split()
+            # Add content with proper wrapping
+            for paragraph in text_content[:100]:  # Limit content
+                words = paragraph.split()
                 current_line = []
                 
                 for word in words:
                     test_line = ' '.join(current_line + [word])
-                    if c.stringWidth(test_line, "Helvetica", 12) < (width - 100):
+                    text_width = c.stringWidth(test_line, "Helvetica", 12)
+                    
+                    if text_width < max_width:
                         current_line.append(word)
                     else:
                         if current_line:
-                            c.drawString(50, y_position, ' '.join(current_line))
-                            y_position -= 15
+                            if y_position < 50:
+                                c.showPage()
+                                y_position = height - 50
+                                c.setFont("Helvetica", 12)
+                            c.drawString(margin, y_position, ' '.join(current_line))
+                            y_position -= line_height
                         current_line = [word]
                 
                 if current_line:
-                    c.drawString(50, y_position, ' '.join(current_line))
-                    y_position -= 15
+                    if y_position < 50:
+                        c.showPage()
+                        y_position = height - 50
+                        c.setFont("Helvetica", 12)
+                    c.drawString(margin, y_position, ' '.join(current_line))
+                    y_position -= line_height
+                
+                # Add space between paragraphs
+                y_position -= line_height / 2
             
             c.save()
             return output_path
@@ -351,21 +363,20 @@ class DocumentConverter:
             raise Exception(f"Fallback DOCX to PDF failed: {str(e)}")
     
     async def _fallback_pdf_to_images(self, input_path, output_format):
-        """Fallback PDF to images using reportlab (creates placeholder)"""
-        output_files = []
-        
+        """Fallback PDF to images using PyMuPDF"""
         try:
-            reader = PdfReader(input_path)
-            num_pages = len(reader.pages)
+            doc = fitz.open(input_path)
+            output_files = []
             
-            for i in range(min(num_pages, 10)):  # Limit to 10 pages
-                output_path = input_path.replace('.pdf', f'_{i+1}.{output_format}')
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # Higher resolution
                 
-                # Create a placeholder image
-                img = Image.new('RGB', (800, 1000), color='white')
-                img.save(output_path, format=output_format.upper())
+                output_path = input_path.replace('.pdf', f'_{page_num+1}.{output_format}')
+                pix.save(output_path)
                 output_files.append(output_path)
             
+            doc.close()
             return output_files
         except Exception as e:
             raise Exception(f"Fallback PDF to images failed: {str(e)}")

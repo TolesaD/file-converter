@@ -6,6 +6,7 @@ from config import Config
 from converters.document_converter import doc_converter
 from converters.image_converter import img_converter
 from converters.audio_converter import audio_converter
+from converters.video_converter import video_converter
 from telegram import Bot
 import logging
 
@@ -159,6 +160,7 @@ class QueueManager:
         conversion_type = job_data['conversion_type']
         input_path = job_data['input_path']
         output_format = job_data['output_format']
+        input_extension = job_data['input_type']
         
         # Update progress
         await self.send_status_update(
@@ -169,44 +171,102 @@ class QueueManager:
         )
         
         try:
-            # Route conversions
-            if conversion_type.startswith('convert_pdf'):
-                if conversion_type == 'convert_pdf_images':
-                    output_files = await doc_converter.convert_pdf_to_images(input_path, output_format)
-                    return output_files[0] if output_files else None
-                elif conversion_type == 'convert_pdf_docx':
-                    output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
+            # Smart conversion routing based on file types
+            if conversion_type.startswith('auto_convert_'):
+                # Handle auto conversions from smart detection
+                parts = conversion_type.replace('auto_convert_', '').split('_')
+                if len(parts) == 2:
+                    source_fmt, target_fmt = parts
+                    return await self.convert_by_formats(input_path, source_fmt, target_fmt)
+            
+            # Manual conversion routing
+            elif 'pdf' in input_extension.lower():
+                if output_format == 'txt':
+                    output_path = input_path.rsplit('.', 1)[0] + '.txt'
+                    return await doc_converter.convert_pdf_to_txt(input_path, output_path)
+                elif output_format == 'docx':
+                    output_path = input_path.rsplit('.', 1)[0] + '.docx'
                     return await doc_converter.convert_pdf_to_docx(input_path, output_path)
-            elif conversion_type.startswith('convert_') and any(img_type in conversion_type for img_type in ['jpg', 'png', 'webp']):
-                if conversion_type in ['convert_jpg_png', 'convert_png_jpg', 'convert_webp_jpg']:
-                    output_fmt = conversion_type.split('_')[2]
-                    return await img_converter.convert_format(input_path, output_fmt)
-            elif conversion_type.startswith('convert_') and any(audio_type in conversion_type for audio_type in ['mp3', 'wav']):
-                if conversion_type in ['convert_mp3_wav', 'convert_wav_mp3']:
-                    output_fmt = conversion_type.split('_')[2]
-                    return await audio_converter.convert_format(input_path, output_fmt)
-            else:
-                # Default conversion
-                return await self.simple_convert(input_path, output_format)
+                elif output_format in ['jpg', 'png', 'jpeg']:
+                    images = await doc_converter.convert_pdf_to_images(input_path, output_format)
+                    return images[0] if images else None
+            
+            elif input_extension.lower() in ['docx', 'doc'] and output_format == 'pdf':
+                output_path = input_path.rsplit('.', 1)[0] + '.pdf'
+                return await doc_converter.convert_docx_to_pdf(input_path, output_path)
+            
+            elif input_extension.lower() in ['jpg', 'jpeg', 'png', 'webp', 'bmp']:
+                if output_format in ['jpg', 'jpeg', 'png', 'webp', 'bmp']:
+                    return await img_converter.convert_format(input_path, output_format)
+                elif output_format == 'pdf':
+                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
+                    return await doc_converter.convert_images_to_pdf([input_path], output_path)
+            
+            elif input_extension.lower() in ['mp3', 'wav', 'ogg', 'flac']:
+                if output_format in ['mp3', 'wav', 'ogg', 'flac']:
+                    return await audio_converter.convert_format(input_path, output_format)
+            
+            elif input_extension.lower() in ['mp4', 'avi', 'mov', 'mkv']:
+                if output_format in ['mp4', 'avi', 'mov', 'mkv', 'gif']:
+                    return await video_converter.convert_format(input_path, output_format)
+            
+            # Default fallback
+            return await self.simple_convert(input_path, output_format)
                 
         except Exception as e:
             logger.error(f"Conversion error for job {job_data['job_id']}: {e}")
             raise
     
+    async def convert_by_formats(self, input_path, source_format, target_format):
+        """Convert based on source and target formats"""
+        try:
+            if source_format == 'pdf':
+                if target_format == 'txt':
+                    output_path = input_path.rsplit('.', 1)[0] + '.txt'
+                    return await doc_converter.convert_pdf_to_txt(input_path, output_path)
+                elif target_format == 'docx':
+                    output_path = input_path.rsplit('.', 1)[0] + '.docx'
+                    return await doc_converter.convert_pdf_to_docx(input_path, output_path)
+                elif target_format in ['jpg', 'png']:
+                    images = await doc_converter.convert_pdf_to_images(input_path, target_format)
+                    return images[0] if images else None
+            
+            elif source_format in ['jpg', 'jpeg', 'png', 'webp']:
+                if target_format in ['jpg', 'jpeg', 'png', 'webp']:
+                    return await img_converter.convert_format(input_path, target_format)
+                elif target_format == 'pdf':
+                    output_path = input_path.rsplit('.', 1)[0] + '.pdf'
+                    return await doc_converter.convert_images_to_pdf([input_path], output_path)
+            
+            elif source_format in ['mp3', 'wav']:
+                if target_format in ['mp3', 'wav']:
+                    return await audio_converter.convert_format(input_path, target_format)
+            
+            # Fallback to simple conversion
+            return await self.simple_convert(input_path, target_format)
+            
+        except Exception as e:
+            logger.error(f"Format-based conversion error: {e}")
+            raise
+    
     async def simple_convert(self, input_path, output_format):
-        """Simple file conversion fallback"""
+        """Simple file conversion fallback with better error handling"""
         try:
             output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
             
-            if output_format == 'txt':
-                with open(output_path, 'w', encoding='utf-8') as f:
-                    f.write(f"Converted file from {input_path.split('.')[-1]} to {output_format}\n")
-                    f.write("This is a placeholder conversion.\n")
+            if output_format == 'txt' and input_path.endswith('.pdf'):
+                # Use proper PDF to TXT conversion
+                return await doc_converter.convert_pdf_to_txt(input_path, output_path)
+            elif output_format == 'pdf' and input_path.endswith(('.txt', '.docx')):
+                # Use proper document to PDF conversion
+                if input_path.endswith('.txt'):
+                    return await doc_converter.convert_txt_to_pdf(input_path, output_path)
+                else:
+                    return await doc_converter.convert_docx_to_pdf(input_path, output_path)
             else:
-                import shutil
-                shutil.copy2(input_path, output_path)
+                # For unsupported conversions, provide informative error
+                raise Exception(f"Conversion from {input_path.split('.')[-1]} to {output_format} is not supported yet")
             
-            return output_path
         except Exception as e:
             logger.error(f"Simple conversion error: {e}")
             raise
