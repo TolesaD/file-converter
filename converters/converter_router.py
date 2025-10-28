@@ -2,21 +2,13 @@ import os
 import asyncio
 import logging
 from config import Config
-from .document_converter import doc_converter
-from .image_converter import img_converter
-from .audio_converter import audio_converter
-from .video_converter import video_converter
+from .universal_converter import universal_converter
 
 logger = logging.getLogger(__name__)
 
 class ConverterRouter:
     def __init__(self):
-        self.converters = {
-            'image': img_converter,
-            'audio': audio_converter, 
-            'video': video_converter,
-            'document': doc_converter
-        }
+        self.universal_converter = universal_converter
     
     def get_file_category(self, file_extension):
         """Determine file category from extension"""
@@ -28,50 +20,15 @@ class ConverterRouter:
         return None
     
     async def convert_file(self, input_path, output_format, input_extension=None):
-        """Universal file conversion method"""
+        """Universal file conversion method using the universal converter"""
         try:
             if not input_extension:
                 input_extension = os.path.splitext(input_path)[1].lstrip('.').lower()
             
-            input_category = self.get_file_category(input_extension)
-            output_category = self.get_file_category(output_format)
+            logger.info(f"Routing conversion: {input_extension} -> {output_format}")
             
-            if not input_category:
-                raise Exception(f"Unsupported input format: {input_extension}")
-            
-            if not output_category:
-                raise Exception(f"Unsupported output format: {output_format}")
-            
-            # Special case: Images to PDF (document conversion)
-            if input_category == 'image' and output_format == 'pdf':
-                return await doc_converter.convert_images_to_pdf([input_path], 
-                    input_path.rsplit('.', 1)[0] + '.pdf')
-            
-            # Special case: PDF to images (image conversion)
-            if input_extension == 'pdf' and output_format in ['jpg', 'jpeg', 'png', 'webp']:
-                images = await doc_converter.convert_pdf_to_images(input_path, output_format)
-                return images[0] if images else None
-            
-            # Special case: Video to audio (audio extraction)
-            if input_category == 'video' and output_category == 'audio':
-                return await video_converter.extract_audio(input_path, output_format)
-            
-            # Special case: Video to GIF
-            if input_category == 'video' and output_format == 'gif':
-                return await video_converter.create_gif(input_path)
-            
-            # Route to appropriate converter
-            if input_category in self.converters:
-                converter = self.converters[input_category]
-                
-                if hasattr(converter, 'convert_format'):
-                    return await converter.convert_format(input_path, output_format)
-                elif hasattr(converter, 'convert_document'):
-                    return await converter.convert_document(input_path, output_format)
-                else:
-                    raise Exception(f"Converter for {input_category} doesn't support conversion")
-            else:
-                raise Exception(f"No converter available for {input_category} files")
+            # Use the universal converter for ALL conversions
+            return await self.universal_converter.convert_file(input_path, output_format, input_extension)
                 
         except Exception as e:
             logger.error(f"Conversion routing error: {e}")
@@ -86,18 +43,29 @@ class ConverterRouter:
         
         supported = []
         
-        # Get conversions from CONVERSION_MAP
-        if input_category in Config.CONVERSION_MAP:
-            if input_extension in Config.CONVERSION_MAP[input_category]:
-                supported.extend(Config.CONVERSION_MAP[input_category][input_extension])
+        # Get all formats that can be converted to
+        for output_format in self.universal_converter.supported_formats.keys():
+            if output_format != input_extension:
+                # For now, assume all formats can be converted to each other within reason
+                # In a production system, you'd have more specific rules
+                if input_category == 'image' and self.get_file_category(output_format) == 'image':
+                    supported.append(output_format)
+                elif input_category == 'audio' and self.get_file_category(output_format) == 'audio':
+                    supported.append(output_format)
+                elif input_category == 'video' and self.get_file_category(output_format) == 'video':
+                    supported.append(output_format)
+                elif input_category == 'document' and self.get_file_category(output_format) == 'document':
+                    supported.append(output_format)
         
         # Add cross-category conversions
         if input_category == 'image':
-            supported.append('pdf')  # Images can convert to PDF
+            supported.append('pdf')
         elif input_extension == 'pdf':
-            supported.extend(['jpg', 'png', 'docx', 'txt'])  # PDF can convert to these
+            supported.extend(['jpg', 'png', 'txt', 'docx', 'html'])
+        elif input_category == 'video':
+            supported.extend(['mp3', 'gif'])
         
-        return list(set(supported))  # Remove duplicates
+        return list(set(supported))[:12]  # Limit to 12 options
 
 # Global router instance
 converter_router = ConverterRouter()
