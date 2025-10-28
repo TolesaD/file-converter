@@ -166,7 +166,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=get_main_menu_keyboard(user_id)
         )
     elif callback_data == "broadcast_confirm":
-        await confirm_broadcast_execute(query, context)
+        await confirm_broadcast(query, context)
     elif callback_data == "admin_view_users":
         await show_all_users(query)
     elif callback_data == "admin_banned_users":
@@ -612,8 +612,11 @@ async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT
         
         context.user_data['broadcast_step'] = 'confirm'
 
-async def confirm_broadcast_execute(query, context):
+async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Confirm and send broadcast - FIXED VERSION"""
+    query = update.callback_query
+    await query.answer()
+    
     user_id = query.from_user.id
     
     if user_id not in Config.ADMIN_IDS:
