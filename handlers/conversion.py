@@ -105,8 +105,8 @@ async def detect_and_suggest_conversions(update, context, file_extension, file_n
         
         if file_type == 'unknown':
             await update.message.reply_text(
-                f"❌ Unknown file type: .{file_extension}\n\n"
-                f"Please use the menu to select conversion type manually.",
+                f"❌ Unsupported file type: .{file_extension}\n\n"
+                f"Please use the menu to browse supported formats.",
                 reply_markup=get_main_menu_keyboard(user_id)
             )
             # Clean up the file
@@ -133,7 +133,7 @@ async def detect_and_suggest_conversions(update, context, file_extension, file_n
 📊 Size: {context.user_data['last_downloaded_file']['size'] // 1024} KB
 
 💡 *I can convert this to:*
-        """
+"""
         
         await update.message.reply_text(
             suggestion_text,
@@ -173,7 +173,7 @@ async def process_file_directly(update, context, input_path, file_extension, use
         conversion_type = context.user_data.get('conversion_type', '')
         output_format = context.user_data.get('output_format', '')
         
-        logger.info(f"Processing file: {conversion_type} -> {output_format}")
+        logger.info(f"Processing file: {file_extension} -> {output_format}")
         
         if not conversion_type or not output_format:
             error_msg = "❌ Conversion type not set. Please select a conversion type first."

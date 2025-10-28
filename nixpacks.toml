@@ -1,7 +1,7 @@
 [phases.setup]
 cmds = [
     "apt-get update",
-    "apt-get install -y ffmpeg imagemagick poppler-utils ghostscript libmagic1",
+    "apt-get install -y ffmpeg imagemagick poppler-utils ghostscript libmagic1 libreoffice",
     "apt-get clean",
 ]
 
