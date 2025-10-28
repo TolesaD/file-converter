@@ -1,216 +1,156 @@
 import os
 import asyncio
-import subprocess
-import tempfile
-from pathlib import Path
 import logging
+from pydub import AudioSegment
+import aiofiles
 
 logger = logging.getLogger(__name__)
 
 class AudioConverter:
     def __init__(self):
-        self.supported_formats = [
-            'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'aiff', 'amr', 
-            'ape', 'mid', 'midi', 'aif', 'aifc', 'au', 'snd', 'ra', 'rm', 'voc', '8svx'
-        ]
+        self.supported_formats = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac']
     
-    async def convert_format(self, input_path, output_format):
-        """Convert audio between formats using FFmpeg"""
+    async def convert_format(self, input_path: str, output_format: str) -> str:
+        """Convert audio to different format using pydub"""
         try:
-            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
+            output_path = os.path.splitext(input_path)[0] + f'_converted.{output_format}'
             
-            # FFmpeg command for audio conversion
-            cmd = [
-                'ffmpeg',
-                '-i', input_path,
-                '-y',  # Overwrite output
-                '-loglevel', 'error',
-                '-hide_banner',
-            ]
+            # Load audio file
+            audio = AudioSegment.from_file(input_path)
             
-            # Format-specific settings
+            # Export to target format
             if output_format == 'mp3':
-                cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '192k', '-ar', '44100'])
+                audio.export(output_path, format='mp3', bitrate='192k')
             elif output_format == 'wav':
-                cmd.extend(['-codec:a', 'pcm_s16le', '-ar', '44100', '-ac', '2'])
+                audio.export(output_path, format='wav')
             elif output_format == 'ogg':
-                cmd.extend(['-codec:a', 'libvorbis', '-b:a', '192k', '-ar', '44100'])
+                audio.export(output_path, format='ogg', codec='libvorbis')
             elif output_format == 'flac':
-                cmd.extend(['-codec:a', 'flac', '-compression_level', '8', '-ar', '44100'])
-            elif output_format in ['m4a', 'aac']:
-                cmd.extend(['-codec:a', 'aac', '-b:a', '192k', '-ar', '44100'])
-            elif output_format in ['aiff', 'aif', 'aifc']:
-                cmd.extend(['-codec:a', 'pcm_s16be', '-ar', '44100'])  # AIFF uses big-endian
-            elif output_format == 'amr':
-                cmd.extend(['-codec:a', 'libopencore_amrnb', '-ar', '8000', '-ac', '1'])
-            elif output_format == 'mid' or output_format == 'midi':
-                # For MIDI, we need a different approach - convert to WAV first if possible
-                if not input_path.lower().endswith(('.mid', '.midi')):
-                    raise Exception("MIDI conversion only supported from MIDI files")
-                cmd.extend(['-codec:a', 'pcm_s16le', '-ar', '44100'])
+                audio.export(output_path, format='flac')
+            elif output_format == 'm4a':
+                audio.export(output_path, format='ipod', codec='aac')
+            elif output_format == 'aac':
+                audio.export(output_path, format='adts', codec='aac')
             else:
-                # Generic conversion
-                cmd.extend(['-codec:a', 'copy'])
+                audio.export(output_path, format=output_format)
             
-            cmd.append(output_path)
-            
-            logger.info(f"Running audio conversion: {' '.join(cmd)}")
-            
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
-            
-            if process.returncode == 0:
-                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                    logger.info(f"Audio conversion successful: {input_path} -> {output_path}")
-                    return output_path
-                else:
-                    raise Exception("Output file was created but is empty")
-            else:
-                error_msg = stderr.decode('utf-8', errors='ignore') if stderr else "Audio conversion failed"
-                raise Exception(f"Audio conversion error: {error_msg}")
+            return output_path
                 
-        except asyncio.TimeoutError:
-            raise Exception("Audio conversion timeout - file may be too large")
         except Exception as e:
-            raise Exception(f"Audio conversion failed: {str(e)}")
+            logger.error(f"Audio conversion error: {e}")
+            # Fallback to FFmpeg
+            return await self._convert_with_ffmpeg(input_path, output_format)
     
-    async def compress_audio(self, input_path, quality='medium'):
+    async def _convert_with_ffmpeg(self, input_path: str, output_format: str) -> str:
+        """Convert using FFmpeg as fallback"""
+        try:
+            output_path = os.path.splitext(input_path)[0] + f'_converted.{output_format}'
+            
+            cmd = ['ffmpeg', '-i', input_path, '-y', output_path]
+            
+            # Add format-specific options
+            if output_format == 'mp3':
+                cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '192k'])
+            elif output_format == 'ogg':
+                cmd.extend(['-codec:a', 'libvorbis', '-q:a', '4'])
+            
+            await self._run_command(cmd)
+            
+            if os.path.exists(output_path):
+                return output_path
+            else:
+                raise Exception("Audio conversion failed - output not found")
+                
+        except Exception as e:
+            logger.error(f"FFmpeg audio conversion error: {e}")
+            raise Exception(f"Audio to {output_format} conversion failed")
+    
+    async def compress_audio(self, input_path: str) -> str:
         """Compress audio file"""
+        output_path = os.path.splitext(input_path)[0] + '_compressed.mp3'
+        
         try:
-            output_path = input_path.rsplit('.', 1)[0] + '_compressed.mp3'
-            
-            quality_settings = {
-                'low': '64k',
-                'medium': '128k',
-                'high': '192k'
-            }
-            
-            bitrate = quality_settings.get(quality, '128k')
-            
+            audio = AudioSegment.from_file(input_path)
+            audio.export(output_path, format='mp3', bitrate='128k')
+            return output_path
+        except Exception as e:
+            # Fallback to FFmpeg
             cmd = [
-                'ffmpeg', '-i', input_path,
-                '-y',
-                '-codec:a', 'libmp3lame',
-                '-b:a', bitrate,
-                '-ar', '44100',
+                'ffmpeg', '-i', input_path, '-y',
+                '-codec:a', 'libmp3lame', '-b:a', '128k',
                 output_path
             ]
-            
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            await asyncio.wait_for(process.communicate(), timeout=120)
-            
-            if process.returncode == 0 and os.path.exists(output_path):
-                return output_path
-            else:
-                raise Exception("Audio compression failed")
-                
-        except Exception as e:
-            raise Exception(f"Audio compression failed: {str(e)}")
+            await self._run_command(cmd)
+            return output_path
     
-    async def extract_audio(self, video_path, output_format='mp3'):
-        """Extract audio from video"""
-        try:
-            output_path = video_path.rsplit('.', 1)[0] + f'_audio.{output_format}'
-            
-            cmd = [
-                'ffmpeg',
-                '-i', video_path,
-                '-y',
-                '-vn',  # No video
-                '-acodec', 'libmp3lame' if output_format == 'mp3' else 'copy',
-                '-b:a', '192k' if output_format == 'mp3' else None,
-                output_path
-            ]
-            
-            # Remove None values
-            cmd = [arg for arg in cmd if arg is not None]
-            
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            await asyncio.wait_for(process.communicate(), timeout=180)
-            
-            if process.returncode == 0 and os.path.exists(output_path):
-                return output_path
-            else:
-                raise Exception("Audio extraction failed")
-                
-        except Exception as e:
-            raise Exception(f"Audio extraction failed: {str(e)}")
-    
-    async def trim_audio(self, input_path, start_time, end_time):
+    async def trim_audio(self, input_path: str, start_time: str, end_time: str) -> str:
         """Trim audio file"""
+        output_path = os.path.splitext(input_path)[0] + '_trimmed.mp3'
+        
         try:
-            duration = end_time - start_time
+            # Convert time strings to milliseconds
+            start_ms = self._time_to_ms(start_time)
+            end_ms = self._time_to_ms(end_time)
             
-            cmd = [
-                'ffmpeg',
-                '-i', input_path,
-                '-y',
-                '-ss', str(start_time),
-                '-t', str(duration),
-                '-acodec', 'copy',
-                input_path.rsplit('.', 1)[0] + f'_trimmed.{input_path.split(".")[-1]}'
-            ]
-            
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            await asyncio.wait_for(process.communicate(), timeout=120)
-            
-            if process.returncode == 0:
-                return cmd[-1]
-            else:
-                raise Exception("Audio trimming failed")
-                
+            audio = AudioSegment.from_file(input_path)
+            trimmed = audio[start_ms:end_ms]
+            trimmed.export(output_path, format='mp3')
+            return output_path
         except Exception as e:
-            raise Exception(f"Audio trimming failed: {str(e)}")
+            # Fallback to FFmpeg
+            cmd = [
+                'ffmpeg', '-i', input_path, '-y',
+                '-ss', start_time, '-to', end_time,
+                '-codec', 'copy', output_path
+            ]
+            await self._run_command(cmd)
+            return output_path
     
-    async def change_speed(self, input_path, speed_factor):
+    async def change_speed(self, input_path: str, speed: float) -> str:
         """Change audio speed"""
+        output_path = os.path.splitext(input_path)[0] + f'_speed_{speed}.mp3'
+        
+        cmd = [
+            'ffmpeg', '-i', input_path, '-y',
+            '-filter:a', f'atempo={speed}',
+            output_path
+        ]
+        
+        await self._run_command(cmd)
+        return output_path
+    
+    def _time_to_ms(self, time_str: str) -> int:
+        """Convert time string (HH:MM:SS) to milliseconds"""
+        parts = time_str.split(':')
+        if len(parts) == 3:
+            h, m, s = parts
+            return (int(h) * 3600 + int(m) * 60 + float(s)) * 1000
+        elif len(parts) == 2:
+            m, s = parts
+            return (int(m) * 60 + float(s)) * 1000
+        else:
+            return float(time_str) * 1000
+    
+    async def _run_command(self, cmd: list) -> str:
+        """Run system command"""
         try:
-            output_path = input_path.rsplit('.', 1)[0] + f'_speed_{speed_factor}.{input_path.split(".")[-1]}'
-            
-            cmd = [
-                'ffmpeg',
-                '-i', input_path,
-                '-y',
-                '-filter:a', f'atempo={speed_factor}',
-                '-vn',
-                output_path
-            ]
-            
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             
-            await asyncio.wait_for(process.communicate(), timeout=120)
+            stdout, stderr = await process.communicate()
             
-            if process.returncode == 0:
-                return output_path
-            else:
-                raise Exception("Audio speed change failed")
-                
+            if process.returncode != 0:
+                error_msg = stderr.decode() if stderr else "Unknown error"
+                raise Exception(f"Command failed: {error_msg}")
+            
+            return stdout.decode() if stdout else ""
+            
         except Exception as e:
-            raise Exception(f"Audio speed change failed: {str(e)}")
+            logger.error(f"Command execution error: {e}")
+            raise Exception(f"Conversion failed: {str(e)}")
 
-# Global converter instance
+# Global instance
 audio_converter = AudioConverter()
