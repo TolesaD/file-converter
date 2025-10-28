@@ -168,7 +168,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
     elif callback_data == "broadcast_confirm":
         await confirm_broadcast(query, context)
     elif callback_data == "admin_view_users":
-        await show_all_users(query)
+        await show_all_users_with_actions(query)
     elif callback_data == "admin_banned_users":
         await show_banned_users(query)
     elif callback_data.startswith("admin_view_user_"):
@@ -390,28 +390,44 @@ async def show_user_management(query):
         parse_mode='Markdown'
     )
 
-async def show_all_users(query):
-    """Show all users with ban/unban options"""
+async def show_all_users_with_actions(query):
+    """Show all users with individual action buttons"""
     users = db.get_all_users()
     
     if not users:
         users_text = "👤 *No Users Found*"
         keyboard = [[InlineKeyboardButton("🔙 Back to User Management", callback_data="admin_users")]]
     else:
-        users_text = "👤 *All Users*\n\n"
+        users_text = "👤 *All Users - Click to Manage*\n\n"
         
-        for i, user in enumerate(users[:15], 1):  # Show first 15 users
+        # Show first 10 users with action buttons
+        for i, user in enumerate(users[:10], 1):
             status = "🚫" if user['is_banned'] else "✅"
             username = f"@{user['username']}" if user['username'] else user['first_name']
             users_text += f"{i}. {status} `{username}` (ID: {user['user_id']}) - {user['total_conversions']} conversions\n"
         
-        if len(users) > 15:
-            users_text += f"\n... and {len(users) - 15} more users"
+        if len(users) > 10:
+            users_text += f"\n... and {len(users) - 10} more users"
         
-        keyboard = [
+        # Create action buttons for each user
+        keyboard = []
+        for user in users[:5]:  # Show actions for first 5 users to avoid too many buttons
+            username_display = f"@{user['username']}" if user['username'] else user['first_name']
+            if user['is_banned']:
+                keyboard.append([InlineKeyboardButton(
+                    f"✅ Unban {username_display}", 
+                    callback_data=f"admin_unban_user_{user['user_id']}"
+                )])
+            else:
+                keyboard.append([InlineKeyboardButton(
+                    f"🚫 Ban {username_display}", 
+                    callback_data=f"admin_ban_user_{user['user_id']}"
+                )])
+        
+        keyboard.extend([
             [InlineKeyboardButton("🚫 Banned Users", callback_data="admin_banned_users")],
             [InlineKeyboardButton("🔙 Back to User Management", callback_data="admin_users")]
-        ]
+        ])
     
     await query.edit_message_text(
         users_text,

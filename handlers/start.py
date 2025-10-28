@@ -114,13 +114,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"Callback received: {callback_data} from user {user_id}")
     
-    # Handle admin-only callbacks
+    # Handle admin-only callbacks - EXPANDED LIST
     admin_callbacks = ["admin_stats", "admin_stats_live", "admin_stats_daily", 
                       "admin_stats_users", "admin_stats_formats", "admin_users",
                       "admin_broadcast", "admin_reports", "admin_refresh", "admin_panel",
-                      "admin_view_users", "admin_banned_users"]
+                      "admin_view_users", "admin_banned_users", "broadcast_confirm",
+                      "admin_view_user_", "admin_ban_user_", "admin_unban_user_", "admin_back_to_users"]
     
-    if any(callback_data.startswith(cb) for cb in admin_callbacks):
+    # Check if callback starts with any admin prefix
+    is_admin_callback = any(callback_data.startswith(cb) for cb in admin_callbacks) or callback_data in admin_callbacks
+    
+    if is_admin_callback:
         if not is_admin:
             await query.edit_message_text("❌ Access denied. Admin only.")
             return
