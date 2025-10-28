@@ -1,4 +1,4 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import db
 from config import Config
@@ -14,11 +14,11 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if user_id not in Config.ADMIN_IDS:
-        await update.message.reply_text("Access denied. Admin only.")
+        await update.message.reply_text("❌ Access denied. Admin only.")
         return
     
     admin_text = """
-*Admin Panel*
+👑 *Admin Panel*
 
 *Quick Actions:*
 • View real-time system statistics
@@ -43,9 +43,9 @@ async def show_admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if user_id not in Config.ADMIN_IDS:
         if hasattr(update, 'callback_query') and update.callback_query:
-            await update.callback_query.edit_message_text("Access denied. Admin only.")
+            await update.callback_query.edit_message_text("❌ Access denied. Admin only.")
         else:
-            await update.message.reply_text("Access denied. Admin only.")
+            await update.message.reply_text("❌ Access denied. Admin only.")
         return
     
     stats_text = await get_live_system_stats()
@@ -99,31 +99,31 @@ async def get_live_system_stats():
     conn.close()
     
     stats_text = f"""
-*System Statistics - Live Dashboard*
+📊 *System Statistics - Live Dashboard*
 
-*Users:*
+👥 *Users:*
 • Total Users: `{stats['total_users']}`
 • Active (7 days): `{active_users_7d}`
 • Banned Users: `{len(db.get_banned_users())}`
 
-*Conversions:*
+🔄 *Conversions:*
 • Total: `{stats['total_conversions']}`
 • Successful: `{stats['successful_conversions']}`
 • Today: `{today_conversions}`
 • Success Rate: `{(stats['successful_conversions'] / stats['total_conversions'] * 100) if stats['total_conversions'] > 0 else 0:.1f}%`
 
-*Queue Status:*
+📈 *Queue Status:*
 • Active Jobs: `{Config.active_jobs}`
 • Queued Jobs: `{db.get_queued_jobs_count()}`
 • Max Concurrent: `{Config.MAX_CONCURRENT_JOBS}`
 
-*Top Formats:*
+🏆 *Top Formats:*
 """
     
     for fmt, count in top_formats:
         stats_text += f"• `{fmt.upper()}`: {count} conversions\n"
     
-    stats_text += f"\n*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    stats_text += f"\n🕒 *Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     
     return stats_text
 
@@ -135,7 +135,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = query.from_user.id
     
     if user_id not in Config.ADMIN_IDS:
-        await query.edit_message_text("Access denied. Admin only.")
+        await query.edit_message_text("❌ Access denied. Admin only.")
         return
     
     callback_data = query.data
@@ -162,15 +162,26 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await show_admin_panel(query)
     elif callback_data == "main_menu":
         await query.edit_message_text(
-            "Main Menu",
+            "🏠 Main Menu",
             reply_markup=get_main_menu_keyboard(user_id)
         )
     elif callback_data == "broadcast_confirm":
-        await confirm_broadcast(query, context)
+        await confirm_broadcast_execute(query, context)
     elif callback_data == "admin_view_users":
         await show_all_users(query)
     elif callback_data == "admin_banned_users":
         await show_banned_users(query)
+    elif callback_data.startswith("admin_view_user_"):
+        user_id_to_view = int(callback_data.replace("admin_view_user_", ""))
+        await view_user_details(query, user_id_to_view)
+    elif callback_data.startswith("admin_ban_user_"):
+        user_id_to_ban = int(callback_data.replace("admin_ban_user_", ""))
+        await ban_user(query, user_id_to_ban)
+    elif callback_data.startswith("admin_unban_user_"):
+        user_id_to_unban = int(callback_data.replace("admin_unban_user_", ""))
+        await unban_user(query, user_id_to_unban)
+    elif callback_data == "admin_back_to_users":
+        await show_user_management(query)
 
 async def show_admin_stats_from_query(query, context):
     """Show admin stats from callback query"""
@@ -184,7 +195,7 @@ async def show_admin_stats_from_query(query, context):
 async def show_admin_panel(query):
     """Show admin panel"""
     admin_text = """
-*Admin Panel*
+👑 *Admin Panel*
 
 *Quick Actions:*
 • View real-time system statistics
@@ -229,15 +240,15 @@ async def show_daily_report(query):
     conn.close()
     
     report_text = f"""
-*Daily Report - {datetime.now().strftime("%Y-%m-%d")}*
+📈 *Daily Report - {datetime.now().strftime("%Y-%m-%d")}*
 
-*Today's Summary:*
+📊 *Today's Summary:*
 • Total Conversions: `{today_stats[0] or 0}`
 • Successful: `{today_stats[1] or 0}`
 • Failed: `{today_stats[2] or 0}`
 • Success Rate: `{(today_stats[1] / today_stats[0] * 100) if today_stats[0] and today_stats[0] > 0 else 0:.1f}%`
 
-*Format Distribution Today:*
+📁 *Format Distribution Today:*
 """
     
     for fmt, count in today_formats[:8]:
@@ -246,12 +257,12 @@ async def show_daily_report(query):
     if not today_formats:
         report_text += "• No conversions today\n"
     
-    report_text += f"\nGenerated: {datetime.now().strftime('%H:%M:%S')}"
+    report_text += f"\n🕒 Generated: {datetime.now().strftime('%H:%M:%S')}"
     
     keyboard = [
-        [InlineKeyboardButton("Refresh", callback_data="admin_stats_daily"),
-         InlineKeyboardButton("Main Stats", callback_data="admin_stats")],
-        [InlineKeyboardButton("Back to Admin", callback_data="admin_panel")]
+        [InlineKeyboardButton("🔄 Refresh", callback_data="admin_stats_daily"),
+         InlineKeyboardButton("📊 Main Stats", callback_data="admin_stats")],
+        [InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_panel")]
     ]
     
     await query.edit_message_text(
@@ -277,9 +288,9 @@ async def show_user_analytics(query):
     conn.close()
     
     analytics_text = """
-*User Analytics*
+👥 *User Analytics*
 
-*Top Users (by conversions):*
+🏆 *Top Users (by conversions):*
 """
     
     for i, (username, first_name, conversions) in enumerate(top_users, 1):
@@ -290,9 +301,9 @@ async def show_user_analytics(query):
         analytics_text += "• No users yet\n"
     
     keyboard = [
-        [InlineKeyboardButton("Refresh", callback_data="admin_stats_users"),
-         InlineKeyboardButton("Main Stats", callback_data="admin_stats")],
-        [InlineKeyboardButton("Back to Admin", callback_data="admin_panel")]
+        [InlineKeyboardButton("🔄 Refresh", callback_data="admin_stats_users"),
+         InlineKeyboardButton("📊 Main Stats", callback_data="admin_stats")],
+        [InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_panel")]
     ]
     
     await query.edit_message_text(
@@ -320,9 +331,9 @@ async def show_format_usage(query):
     conn.close()
     
     format_text = """
-*Format Usage Statistics*
+📁 *Format Usage Statistics*
 
-*Most Popular Conversions:*
+🔥 *Most Popular Conversions:*
 """
     
     for i, (input_fmt, output_fmt, count) in enumerate(popular_conversions, 1):
@@ -332,9 +343,9 @@ async def show_format_usage(query):
         format_text += "• No conversions yet\n"
     
     keyboard = [
-        [InlineKeyboardButton("Refresh", callback_data="admin_stats_formats"),
-         InlineKeyboardButton("Main Stats", callback_data="admin_stats")],
-        [InlineKeyboardButton("Back to Admin", callback_data="admin_panel")]
+        [InlineKeyboardButton("🔄 Refresh", callback_data="admin_stats_formats"),
+         InlineKeyboardButton("📊 Main Stats", callback_data="admin_stats")],
+        [InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_panel")]
     ]
     
     await query.edit_message_text(
@@ -349,16 +360,16 @@ async def show_user_management(query):
     banned_users = db.get_banned_users()
     
     user_text = f"""
-*User Management*
+👥 *User Management*
 
-*Quick Stats:*
+📊 *Quick Stats:*
 • Total Users: `{len(all_users)}`
 • Banned Users: `{len(banned_users)}`
 • Active Users: `{len(all_users) - len(banned_users)}`
 
-*User Actions:*
-• View all users
-• Ban/Unban users
+🔨 *User Actions:*
+• View all users with ban options
+• Manage banned users
 • User statistics
 • Export user data
 
@@ -366,11 +377,11 @@ async def show_user_management(query):
     """
     
     keyboard = [
-        [InlineKeyboardButton("View All Users", callback_data="admin_view_users"),
-         InlineKeyboardButton("Banned Users", callback_data="admin_banned_users")],
-        [InlineKeyboardButton("Broadcast", callback_data="admin_broadcast"),
-         InlineKeyboardButton("User Stats", callback_data="admin_stats_users")],
-        [InlineKeyboardButton("Back to Admin", callback_data="admin_panel")]
+        [InlineKeyboardButton("👤 View All Users", callback_data="admin_view_users"),
+         InlineKeyboardButton("🚫 Banned Users", callback_data="admin_banned_users")],
+        [InlineKeyboardButton("📧 Broadcast", callback_data="admin_broadcast"),
+         InlineKeyboardButton("📊 User Stats", callback_data="admin_stats_users")],
+        [InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_panel")]
     ]
     
     await query.edit_message_text(
@@ -383,20 +394,24 @@ async def show_all_users(query):
     """Show all users with ban/unban options"""
     users = db.get_all_users()
     
-    users_text = "*All Users*\n\n"
-    
-    for i, user in enumerate(users[:20], 1):  # Show first 20 users
-        status = "BANNED" if user['is_banned'] else "ACTIVE"
-        username = f"@{user['username']}" if user['username'] else user['first_name']
-        users_text += f"{i}. {status} `{username}` (ID: {user['user_id']})\n"
-    
-    if len(users) > 20:
-        users_text += f"\n... and {len(users) - 20} more users"
-    
-    keyboard = [
-        [InlineKeyboardButton("Banned Users", callback_data="admin_banned_users")],
-        [InlineKeyboardButton("Back to User Management", callback_data="admin_users")]
-    ]
+    if not users:
+        users_text = "👤 *No Users Found*"
+        keyboard = [[InlineKeyboardButton("🔙 Back to User Management", callback_data="admin_users")]]
+    else:
+        users_text = "👤 *All Users*\n\n"
+        
+        for i, user in enumerate(users[:15], 1):  # Show first 15 users
+            status = "🚫" if user['is_banned'] else "✅"
+            username = f"@{user['username']}" if user['username'] else user['first_name']
+            users_text += f"{i}. {status} `{username}` (ID: {user['user_id']}) - {user['total_conversions']} conversions\n"
+        
+        if len(users) > 15:
+            users_text += f"\n... and {len(users) - 15} more users"
+        
+        keyboard = [
+            [InlineKeyboardButton("🚫 Banned Users", callback_data="admin_banned_users")],
+            [InlineKeyboardButton("🔙 Back to User Management", callback_data="admin_users")]
+        ]
     
     await query.edit_message_text(
         users_text,
@@ -404,70 +419,131 @@ async def show_all_users(query):
         parse_mode='Markdown'
     )
 
-# ——— BANNED USERS WITH UNBAN BUTTONS ———
 async def show_banned_users(query):
-    banned = db.get_banned_users()
+    """Show banned users with unban options"""
+    banned_users = db.get_banned_users()
     
-    if not banned:
-        text = "*No Banned Users*"
-        keyboard = [[InlineKeyboardButton("Back", callback_data="admin_users")]]
+    if not banned_users:
+        banned_text = "🚫 *No Banned Users*"
+        keyboard = [[InlineKeyboardButton("🔙 Back to User Management", callback_data="admin_users")]]
     else:
-        text = "*Banned Users*\n\n"
-        keyboard = []
-        for i, user in enumerate(banned, 1):
-            name = f"@{user['username']}" if user['username'] else user['first_name']
-            uid = user['user_id']
-            text += f"{i}. `{name}` (ID: `{uid}`)\n"
-            keyboard.append([InlineKeyboardButton("Unban", callback_data=f"unban_user_{uid}")])
+        banned_text = "🚫 *Banned Users*\n\n"
         
-        keyboard.append([InlineKeyboardButton("View All", callback_data="admin_view_users")])
-        keyboard.append([InlineKeyboardButton("Back", callback_data="admin_users")])
-
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-
-# ——— BAN USER ———
-async def ban_user(query, target_id: int):
-    admin_id = query.from_user.id
-    if target_id == admin_id:
-        await query.answer("You can't ban yourself!", show_alert=True)
-        return
-    if target_id in Config.ADMIN_IDS:
-        await query.answer("Cannot ban another admin!", show_alert=True)
-        return
-
-    success = db.ban_user(target_id)
-    if success:
-        await query.answer("User banned.", show_alert=True)
-        logger.info(f"Admin {admin_id} banned user {target_id}")
-    else:
-        await query.answer("Failed to ban user.", show_alert=True)
+        for i, user in enumerate(banned_users, 1):
+            username = f"@{user['username']}" if user['username'] else user['first_name']
+            banned_text += f"{i}. `{username}` (ID: {user['user_id']})\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("👤 View All Users", callback_data="admin_view_users")],
+            [InlineKeyboardButton("🔙 Back to User Management", callback_data="admin_users")]
+        ]
     
-    await show_all_users(query)  # Refresh list
+    await query.edit_message_text(
+        banned_text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
 
-# ——— UNBAN USER ———
-async def unban_user(query, target_id: int):
-    success = db.unban_user(target_id)
-    if success:
-        await query.answer("User unbanned.", show_alert=True)
-        logger.info(f"Admin {query.from_user.id} unbanned user {target_id}")
-    else:
-        await query.answer("User not banned or error.", show_alert=True)
+async def view_user_details(query, user_id):
+    """Show detailed user information with ban/unban options"""
+    user = db.get_user_by_id(user_id)
     
-    # Refresh appropriate view
-    if "admin_banned_users" in query.message.text:
-        await show_banned_users(query)
+    if not user:
+        await query.edit_message_text("❌ User not found.")
+        return
+    
+    status = "🚫 Banned" if user['is_banned'] else "✅ Active"
+    username = f"@{user['username']}" if user['username'] else "Not set"
+    
+    user_details = f"""
+👤 *User Details*
+
+*Basic Information:*
+• User ID: `{user['user_id']}`
+• Username: `{username}`
+• First Name: `{user['first_name']}`
+• Last Name: `{user['last_name'] or 'Not set'}`
+• Status: {status}
+
+*Statistics:*
+• Total Conversions: `{user['total_conversions']}`
+• Account Created: `{user.get('registration_date', 'Unknown')}`
+
+*Actions:*
+    """
+    
+    keyboard_buttons = []
+    if user['is_banned']:
+        keyboard_buttons.append(InlineKeyboardButton("✅ Unban User", callback_data=f"admin_unban_user_{user_id}"))
     else:
-        await show_all_users(query)
+        keyboard_buttons.append(InlineKeyboardButton("🚫 Ban User", callback_data=f"admin_ban_user_{user_id}"))
+    
+    keyboard = [
+        keyboard_buttons,
+        [InlineKeyboardButton("🔙 Back to Users", callback_data="admin_users")]
+    ]
+    
+    await query.edit_message_text(
+        user_details,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
 
-# ——— BROADCAST FLOW ———
+async def ban_user(query, user_id):
+    """Ban a user"""
+    user = db.get_user_by_id(user_id)
+    
+    if not user:
+        await query.edit_message_text("❌ User not found.")
+        return
+    
+    if user['is_banned']:
+        await query.edit_message_text("⚠️ User is already banned.")
+        return
+    
+    success = db.ban_user(user_id)
+    
+    if success:
+        username = f"@{user['username']}" if user['username'] else user['first_name']
+        await query.edit_message_text(
+            f"✅ Successfully banned user: `{username}` (ID: {user_id})",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Users", callback_data="admin_users")]]),
+            parse_mode='Markdown'
+        )
+    else:
+        await query.edit_message_text("❌ Failed to ban user.")
 
-async def start_broadcast(query, context: ContextTypes.DEFAULT_TYPE):
+async def unban_user(query, user_id):
+    """Unban a user"""
+    user = db.get_user_by_id(user_id)
+    
+    if not user:
+        await query.edit_message_text("❌ User not found.")
+        return
+    
+    if not user['is_banned']:
+        await query.edit_message_text("⚠️ User is not banned.")
+        return
+    
+    success = db.unban_user(user_id)
+    
+    if success:
+        username = f"@{user['username']}" if user['username'] else user['first_name']
+        await query.edit_message_text(
+            f"✅ Successfully unbanned user: `{username}` (ID: {user_id})",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Users", callback_data="admin_users")]]),
+            parse_mode='Markdown'
+        )
+    else:
+        await query.edit_message_text("❌ Failed to unban user.")
+
+async def start_broadcast(query, context):
     """Start broadcast message process"""
     context.user_data['awaiting_broadcast'] = True
     context.user_data['broadcast_step'] = 'message'
     
     broadcast_text = """
-*Broadcast Message*
+📢 *Broadcast Message*
 
 You can send a message to all registered users.
 
@@ -484,7 +560,7 @@ You can send a message to all registered users.
 Please send your broadcast message now, or use /cancel to abort.
     """
     
-    keyboard = [[InlineKeyboardButton("Cancel", callback_data="admin_panel")]]
+    keyboard = [[InlineKeyboardButton("❌ Cancel", callback_data="admin_panel")]]
     
     await query.edit_message_text(
         broadcast_text,
@@ -493,116 +569,119 @@ Please send your broadcast message now, or use /cancel to abort.
     )
 
 async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle incoming broadcast message from admin"""
+    """Handle incoming broadcast message"""
     user_id = update.effective_user.id
     
     if user_id not in Config.ADMIN_IDS:
-        await update.message.reply_text("Access denied. Admin only.")
+        await update.message.reply_text("❌ Access denied. Admin only.")
         return
     
-    if not context.user_data.get('awaiting_broadcast') or context.user_data.get('broadcast_step') != 'message':
+    if not context.user_data.get('awaiting_broadcast'):
         return
     
-    broadcast_text = update.message.text
-    context.user_data['broadcast_text'] = broadcast_text
-    context.user_data['broadcast_step'] = 'preview'
-    
-    # Get active user count
-    users = db.get_all_users()
-    active_count = len([u for u in users if not u['is_banned']])
-    
-    preview_text = f"""
-*Broadcast Preview*
+    if context.user_data.get('broadcast_step') == 'message':
+        broadcast_text = update.message.text
+        context.user_data['broadcast_text'] = broadcast_text
+        
+        # Get user count for confirmation
+        users = db.get_all_users()
+        user_count = len([u for u in users if not u['is_banned']])  # Only active users
+        
+        confirm_text = f"""
+📢 *Broadcast Preview*
 
 *Message:*
 {broadcast_text}
 
-*Recipients:* {active_count} active users
+*Recipients:* {user_count} active users
 
-*Ready to send?*
-    """
-    
-    keyboard = [
-        [InlineKeyboardButton("Send Now", callback_data="broadcast_confirm")],
-        [InlineKeyboardButton("Edit Message", callback_data="admin_broadcast"),
-         InlineKeyboardButton("Cancel", callback_data="admin_panel")]
-    ]
-    
-    await update.message.reply_text(
-        preview_text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
-    )
+*Are you sure you want to send this broadcast?*
+        """
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Send Broadcast", callback_data="broadcast_confirm")],
+            [InlineKeyboardButton("✏️ Edit Message", callback_data="admin_broadcast"),
+             InlineKeyboardButton("❌ Cancel", callback_data="admin_panel")]
+        ]
+        
+        await update.message.reply_text(
+            confirm_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        
+        context.user_data['broadcast_step'] = 'confirm'
 
-async def confirm_broadcast(query, context: ContextTypes.DEFAULT_TYPE):
-    """Confirm and send broadcast to all active users"""
+async def confirm_broadcast_execute(query, context):
+    """Confirm and send broadcast - FIXED VERSION"""
     user_id = query.from_user.id
     
     if user_id not in Config.ADMIN_IDS:
-        await query.edit_message_text("Access denied. Admin only.")
+        await query.edit_message_text("❌ Access denied. Admin only.")
         return
     
-    broadcast_text = context.user_data.get('broadcast_text')
+    broadcast_text = context.user_data.get('broadcast_text', '')
+    
     if not broadcast_text:
-        await query.edit_message_text("No message found. Please start again.")
+        await query.edit_message_text("❌ No broadcast message found.")
         return
     
-    # Get active users
+    # Get all active users (not banned)
     users = db.get_all_users()
     active_users = [u for u in users if not u['is_banned']]
-    total = len(active_users)
+    total_users = len(active_users)
     
-    if total == 0:
-        await query.edit_message_text("No active users to broadcast to.")
+    if total_users == 0:
+        await query.edit_message_text("❌ No active users to send broadcast to.")
         return
     
-    # Start sending
-    progress_msg = await query.edit_message_text(
-        f"Sending to {total} users...\nProgress: 0/{total}"
-    )
+    successful_sends = 0
+    failed_sends = 0
     
-    bot = Bot(token=Config.BOT_TOKEN)
-    success = 0
-    failed = 0
+    # Send to all active users
+    progress_msg = await query.edit_message_text(f"📤 Sending broadcast to {total_users} users...\n\nProgress: 0/{total_users}")
+    
+    from telegram import Bot
+    bot = Bot(Config.BOT_TOKEN)
     
     for i, user in enumerate(active_users, 1):
         try:
             await bot.send_message(
                 chat_id=user['user_id'],
-                text=f"*Broadcast Message*\n\n{broadcast_text}",
+                text=f"📢 *Broadcast Message*\n\n{broadcast_text}",
                 parse_mode='Markdown'
             )
-            success += 1
+            successful_sends += 1
         except Exception as e:
-            failed += 1
-            logger.error(f"Broadcast failed for {user['user_id']}: {e}")
+            failed_sends += 1
+            logger.error(f"Failed to send broadcast to user {user['user_id']}: {e}")
         
-        # Update every 10 users
-        if i % 10 == 0 or i == total:
+        # Update progress every 10 users or at the end
+        if i % 10 == 0 or i == total_users:
             try:
                 await progress_msg.edit_text(
-                    f"Sending to {total} users...\n"
-                    f"Progress: {i}/{total}\n"
-                    f"Success: {success}\n"
-                    f"Failed: {failed}"
+                    f"📤 Sending broadcast to {total_users} users...\n\n"
+                    f"Progress: {i}/{total_users}\n"
+                    f"✅ Successful: {successful_sends}\n"
+                    f"❌ Failed: {failed_sends}"
                 )
             except:
-                pass  # Ignore edit conflicts
+                pass  # Ignore message not modified errors
     
     # Final result
     result_text = f"""
-*Broadcast Complete!*
+✅ *Broadcast Completed*
 
 *Results:*
-• Total: {total}
-• Success: {success}
-• Failed: {failed}
-• Success Rate: {(success/total*100):.1f}%
+• Total Users: {total_users}
+• ✅ Successful: {successful_sends}
+• ❌ Failed: {failed_sends}
+• 📊 Success Rate: {(successful_sends/total_users*100) if total_users > 0 else 0:.1f}%
 
-Message delivered!
+*Message sent to all active users successfully!*
     """
     
-    keyboard = [[InlineKeyboardButton("Back to Admin", callback_data="admin_panel")]]
+    keyboard = [[InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_panel")]]
     
     await query.edit_message_text(
         result_text,
@@ -611,20 +690,20 @@ Message delivered!
     )
     
     # Cleanup
-    context.user_data.clear()
-    for key in ['awaiting_broadcast', 'broadcast_step', 'broadcast_text']:
-        context.user_data.pop(key, None)
+    context.user_data.pop('awaiting_broadcast', None)
+    context.user_data.pop('broadcast_step', None)
+    context.user_data.pop('broadcast_text', None)
 
 async def show_reports(query):
     """Show admin reports"""
     reports_text = """
-*Admin Reports*
+📈 *Admin Reports*
 
 *Available Reports:*
-• Real-time statistics
-• Daily conversion reports  
-• User activity analytics
-• Format usage statistics
+• 📊 Real-time statistics
+• 📅 Daily conversion reports  
+• 👥 User activity analytics
+• 📁 Format usage statistics
 
 *Export Options:*
 • User data export
@@ -634,11 +713,11 @@ Use the statistics buttons for detailed analytics.
     """
     
     keyboard = [
-        [InlineKeyboardButton("Live Stats", callback_data="admin_stats"),
-         InlineKeyboardButton("Daily Report", callback_data="admin_stats_daily")],
-        [InlineKeyboardButton("User Analytics", callback_data="admin_stats_users"),
-         InlineKeyboardButton("Format Usage", callback_data="admin_stats_formats")],
-        [InlineKeyboardButton("Back to Admin", callback_data="admin_panel")]
+        [InlineKeyboardButton("📊 Live Stats", callback_data="admin_stats"),
+         InlineKeyboardButton("📅 Daily Report", callback_data="admin_stats_daily")],
+        [InlineKeyboardButton("👥 User Analytics", callback_data="admin_stats_users"),
+         InlineKeyboardButton("📁 Format Usage", callback_data="admin_stats_formats")],
+        [InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_panel")]
     ]
     
     await query.edit_message_text(
