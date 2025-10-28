@@ -56,7 +56,7 @@ class VideoConverter:
                 stderr=asyncio.subprocess.PIPE
             )
             
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)  # 5 min timeout
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
             
             if process.returncode == 0 and os.path.exists(output_path):
                 return output_path
@@ -81,7 +81,6 @@ class VideoConverter:
                 '-y',
                 '-t', str(duration),  # Duration in seconds
                 '-vf', 'fps=10,scale=320:-1:flags=lanczos',
-                '-c:v', 'gif',
                 output_path
             ]
             

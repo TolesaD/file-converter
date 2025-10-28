@@ -15,17 +15,17 @@ class ImageConverter:
         ]
     
     async def convert_format(self, input_path, output_format, quality=95):
-        """Convert image to different format with comprehensive format support"""
+        """Convert image to different format"""
         try:
-            # Handle special formats first
+            # Handle special formats with FFmpeg
             if output_format.lower() in ['heic', 'avif']:
                 return await self._convert_with_ffmpeg(input_path, output_format)
             elif output_format.lower() == 'svg':
-                return await self._rasterize_svg(input_path, 'png')  # SVG to raster
+                # SVG output not supported for raster images
+                raise Exception("Cannot convert to SVG from raster images")
             elif input_path.lower().endswith('.svg'):
+                # Convert SVG to raster
                 return await self._rasterize_svg(input_path, output_format)
-            elif output_format.lower() in ['eps', 'psd']:
-                return await self._convert_special_formats(input_path, output_format)
             else:
                 return await self._convert_with_pillow(input_path, output_format, quality)
                 
@@ -34,10 +34,10 @@ class ImageConverter:
             raise Exception(f"Image conversion failed: {str(e)}")
     
     async def _convert_with_pillow(self, input_path, output_format, quality=95):
-        """Convert using Pillow for common formats"""
+        """Convert using Pillow"""
         try:
             with Image.open(input_path) as img:
-                # Handle multi-frame images (GIF, APNG)
+                # Handle multi-frame images
                 if getattr(img, 'is_animated', False):
                     return await self._convert_animated_image(input_path, output_format)
                 
@@ -59,9 +59,9 @@ class ImageConverter:
                 # Format-specific settings
                 save_kwargs = {}
                 if output_format.lower() in ['jpg', 'jpeg']:
-                    save_kwargs = {'format': 'JPEG', 'quality': quality, 'optimize': True, 'progressive': True}
+                    save_kwargs = {'format': 'JPEG', 'quality': quality, 'optimize': True}
                 elif output_format.lower() == 'webp':
-                    save_kwargs = {'format': 'WEBP', 'quality': quality, 'method': 6}
+                    save_kwargs = {'format': 'WEBP', 'quality': quality}
                 elif output_format.lower() == 'png':
                     save_kwargs = {'format': 'PNG', 'optimize': True}
                 elif output_format.lower() == 'tiff':
@@ -69,7 +69,9 @@ class ImageConverter:
                 elif output_format.lower() == 'bmp':
                     save_kwargs = {'format': 'BMP'}
                 elif output_format.lower() == 'ico':
-                    save_kwargs = {'format': 'ICO', 'sizes': [(32, 32), (64, 64)]}
+                    # Resize for icon
+                    img = img.resize((64, 64), Image.Resampling.LANCZOS)
+                    save_kwargs = {'format': 'ICO'}
                 else:
                     save_kwargs = {'format': output_format.upper()}
                 
@@ -80,13 +82,13 @@ class ImageConverter:
             raise Exception(f"Pillow conversion error: {str(e)}")
     
     async def _convert_with_ffmpeg(self, input_path, output_format):
-        """Convert using FFmpeg for formats not supported by Pillow"""
+        """Convert using FFmpeg for difficult formats"""
         try:
             output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
             
             cmd = [
                 'ffmpeg', '-i', input_path,
-                '-y',  # Overwrite output
+                '-y',
                 '-loglevel', 'error',
                 output_path
             ]
@@ -115,18 +117,23 @@ class ImageConverter:
         try:
             output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
             
-            # Use cairosvg if available, otherwise fallback
+            # Use cairosvg if available
             try:
                 import cairosvg
+                
                 if output_format == 'png':
                     cairosvg.svg2png(url=input_path, write_to=output_path)
                 elif output_format in ['jpg', 'jpeg']:
-                    cairosvg.svg2png(url=input_path, write_to=output_path)
-                    # Convert PNG to JPG
-                    with Image.open(output_path) as img:
+                    # Convert to PNG first, then to JPG
+                    png_path = output_path.replace(f'.{output_format}', '.png')
+                    cairosvg.svg2png(url=input_path, write_to=png_path)
+                    with Image.open(png_path) as img:
                         img = img.convert('RGB')
-                        img.save(output_path.replace('.png', '.jpg'), 'JPEG', quality=95)
-                        output_path = output_path.replace('.png', '.jpg')
+                        img.save(output_path, 'JPEG', quality=95)
+                    os.remove(png_path)
+                else:
+                    cairosvg.svg2png(url=input_path, write_to=output_path)
+                
                 return output_path
             except ImportError:
                 # Fallback to ImageMagick
@@ -141,56 +148,37 @@ class ImageConverter:
                 if os.path.exists(output_path):
                     return output_path
                 else:
-                    raise Exception("SVG conversion failed - no tools available")
+                    raise Exception("SVG conversion failed")
                     
         except Exception as e:
             raise Exception(f"SVG conversion failed: {str(e)}")
     
     async def _convert_animated_image(self, input_path, output_format):
-        """Convert animated images (GIF, APNG)"""
+        """Convert animated images"""
         try:
             if output_format.lower() == 'gif':
-                # Simple copy for GIF to GIF
+                # Keep as GIF
                 output_path = input_path.rsplit('.', 1)[0] + '.gif'
                 import shutil
                 shutil.copy2(input_path, output_path)
                 return output_path
             else:
-                # Convert animated image to first frame
+                # Convert to first frame only
                 with Image.open(input_path) as img:
-                    img.seek(0)  # Get first frame
+                    img.seek(0)
                     output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
+                    
+                    if output_format in ['jpg', 'jpeg'] and img.mode in ('RGBA', 'P'):
+                        img = img.convert('RGB')
+                    
                     img.save(output_path)
                     return output_path
                     
         except Exception as e:
             raise Exception(f"Animated image conversion failed: {str(e)}")
     
-    async def _convert_special_formats(self, input_path, output_format):
-        """Convert special formats like EPS, PSD"""
-        try:
-            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
-            
-            # Use ImageMagick for special formats
-            cmd = ['convert', input_path, output_path]
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            await asyncio.wait_for(process.communicate(), timeout=30)
-            
-            if os.path.exists(output_path):
-                return output_path
-            else:
-                raise Exception(f"Special format conversion failed")
-                
-        except Exception as e:
-            raise Exception(f"Special format conversion error: {str(e)}")
-    
     async def compress_image(self, input_path, quality=85):
-        """Compress image by reducing quality"""
+        """Compress image"""
         try:
             output_path = input_path.rsplit('.', 1)[0] + '_compressed.' + input_path.rsplit('.', 1)[1]
             
@@ -209,7 +197,7 @@ class ImageConverter:
             raise Exception(f"Image compression failed: {str(e)}")
     
     async def resize_image(self, input_path, width=None, height=None, maintain_ratio=True):
-        """Resize image with high quality"""
+        """Resize image"""
         try:
             with Image.open(input_path) as img:
                 original_width, original_height = img.size
@@ -234,15 +222,40 @@ class ImageConverter:
                         new_width = width
                         new_height = height
                     else:
-                        raise Exception("Please specify both width and height for non-ratio resize")
+                        raise Exception("Please specify both width and height")
                 
                 img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
                 
-                output_path = input_path.rsplit('.', 1)[0] + f'_resized_{new_width}x{new_height}.' + input_path.rsplit('.', 1)[1]
+                output_path = input_path.rsplit('.', 1)[0] + f'_resized.{input_path.rsplit(".", 1)[1]}'
                 img.save(output_path, optimize=True)
                 return output_path
         except Exception as e:
             raise Exception(f"Image resize failed: {str(e)}")
+    
+    async def apply_filter(self, input_path, filter_type):
+        """Apply filter to image"""
+        try:
+            with Image.open(input_path) as img:
+                filters = {
+                    'blur': ImageFilter.GaussianBlur(2),
+                    'sharpen': ImageFilter.SHARPEN,
+                    'contour': ImageFilter.CONTOUR,
+                    'emboss': ImageFilter.EMBOSS,
+                    'smooth': ImageFilter.SMOOTH,
+                }
+                
+                if filter_type == 'grayscale':
+                    img = ImageOps.grayscale(img)
+                elif filter_type == 'invert':
+                    img = ImageOps.invert(img)
+                elif filter_type in filters:
+                    img = img.filter(filters[filter_type])
+                
+                output_path = input_path.rsplit('.', 1)[0] + f'_{filter_type}.{input_path.rsplit(".", 1)[1]}'
+                img.save(output_path, optimize=True)
+                return output_path
+        except Exception as e:
+            raise Exception(f"Filter application failed: {str(e)}")
 
-# Global converter instance - FIXED: Remove circular import
+# Global converter instance
 img_converter = ImageConverter()

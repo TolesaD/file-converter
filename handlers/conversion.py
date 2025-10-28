@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle uploaded files with smart detection - MAIN ENTRY POINT"""
+    """Handle uploaded files with smart detection"""
     user = update.effective_user
     user_id = user.id
     
@@ -44,7 +44,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ File too large! Maximum size is 50MB.")
         return
     
-    # Download file first
+    # Download file
     progress_msg = await update.message.reply_text("📥 Downloading your file...")
     
     try:
@@ -54,7 +54,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         logger.info(f"File downloaded to: {input_path}")
         
-        # Store the downloaded file path in context for later use
+        # Store file info
         context.user_data['last_downloaded_file'] = {
             'path': input_path,
             'extension': file_extension,
@@ -62,13 +62,12 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'size': file.file_size
         }
         
-        # Check if this is a follow-up upload after conversion type selection
+        # Check if this is a follow-up upload
         if context.user_data.get('expecting_followup_upload'):
-            # This is a follow-up upload after conversion type selection
             context.user_data.pop('expecting_followup_upload', None)
             await process_file_directly(update, context, input_path, file_extension, user_id)
         else:
-            # This is a random upload - show conversion options
+            # Show conversion options
             await detect_and_suggest_conversions(update, context, file_extension, file_name, user_id, input_path)
             
     except Exception as e:
@@ -95,12 +94,12 @@ async def detect_and_suggest_conversions(update, context, file_extension, file_n
                 f"Please use the menu to select conversion type manually.",
                 reply_markup=get_main_menu_keyboard(user_id)
             )
-            # Clean up the file since we can't use it
+            # Clean up the file
             if os.path.exists(input_path):
                 os.remove(input_path)
             return
         
-        # Store file info for later use in conversions
+        # Store file info for later use
         context.user_data['detected_file_info'] = {
             'path': input_path,
             'extension': file_extension,
@@ -151,23 +150,18 @@ async def process_file_directly(update, context, input_path, file_extension, use
         if not conversion_type or not output_format:
             error_msg = "❌ Conversion type not set. Please select a conversion type first."
             
-            # Handle different types of update objects
             if hasattr(update, 'message') and update.message:
                 await update.message.reply_text(
                     error_msg,
                     reply_markup=get_main_menu_keyboard(user_id)
                 )
             elif hasattr(update, 'edit_message_text'):
-                # It's a callback query
                 await update.edit_message_text(
                     error_msg,
                     reply_markup=get_main_menu_keyboard(user_id)
                 )
-            else:
-                # Fallback
-                logger.error(f"Cannot send error message for user {user_id}")
             
-            # Clean up the file since we can't process it
+            # Clean up the file
             if os.path.exists(input_path):
                 os.remove(input_path)
             return
@@ -192,16 +186,12 @@ async def process_file_directly(update, context, input_path, file_extension, use
         queue_message += f"🎯 Conversion: `{file_extension.upper()} → {output_format.upper()}`\n\n"
         queue_message += "⏳ You'll receive progress updates shortly..."
         
-        # Handle different types of update objects
         if hasattr(update, 'message') and update.message:
             await update.message.reply_text(queue_message, parse_mode='Markdown')
         elif hasattr(update, 'edit_message_text'):
-            # It's a callback query
             await update.edit_message_text(queue_message, parse_mode='Markdown')
-        else:
-            logger.error(f"Cannot send queue message for user {user_id}")
         
-        # Clear conversion data but keep user context
+        # Clear conversion data
         context.user_data.pop('conversion_type', None)
         context.user_data.pop('output_format', None)
         context.user_data.pop('file_type', None)
@@ -215,13 +205,10 @@ async def process_file_directly(update, context, input_path, file_extension, use
         logger.error(f"Error processing file for user {user_id}: {e}")
         error_message = f"❌ Error processing file: {str(e)}"
         
-        # Handle different types of update objects
         if hasattr(update, 'message') and update.message:
             await update.message.reply_text(error_message)
         elif hasattr(update, 'edit_message_text'):
             await update.edit_message_text(error_message)
-        else:
-            logger.error(f"Cannot send error message for user {user_id}")
         
         # Cleanup on error
         if os.path.exists(input_path):
