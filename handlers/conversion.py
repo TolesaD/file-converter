@@ -11,10 +11,25 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+async def is_user_banned(user_id):
+    """Check if user is banned"""
+    user = db.get_user_by_id(user_id)
+    return user and user['is_banned']
+
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle uploaded files with smart detection"""
     user = update.effective_user
     user_id = user.id
+    
+    # Check if user is banned
+    if await is_user_banned(user_id):
+        await update.message.reply_text(
+            "🚫 *Account Banned*\n\n"
+            "Your account has been banned from using this bot. "
+            "If you believe this is a mistake, please contact the administrator.",
+            parse_mode='Markdown'
+        )
+        return
     
     logger.info(f"File upload from user {user_id}")
     
@@ -141,6 +156,19 @@ async def process_file_directly(update, context, input_path, file_extension, use
     """Process file when conversion type is already selected"""
     
     try:
+        # Check if user is banned (in case they were banned during upload)
+        if await is_user_banned(user_id):
+            await update.message.reply_text(
+                "🚫 *Account Banned*\n\n"
+                "Your account has been banned from using this bot. "
+                "If you believe this is a mistake, please contact the administrator.",
+                parse_mode='Markdown'
+            )
+            # Clean up the file
+            if os.path.exists(input_path):
+                os.remove(input_path)
+            return
+        
         # Get conversion details from context
         conversion_type = context.user_data.get('conversion_type', '')
         output_format = context.user_data.get('output_format', '')

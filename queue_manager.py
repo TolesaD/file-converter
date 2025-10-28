@@ -15,6 +15,11 @@ class QueueManager:
     async def add_to_queue(self, job_data):
         """Add a job to the processing queue"""
         try:
+            # Check if user is banned before adding to queue
+            user = db.get_user_by_id(job_data['user_id'])
+            if user and user['is_banned']:
+                raise Exception("User account is banned")
+            
             # Calculate queue position
             queue_position = db.get_queued_jobs_count() + 1
             
@@ -65,6 +70,19 @@ class QueueManager:
                 except asyncio.TimeoutError:
                     continue
                 
+                # Check if user is still not banned before processing
+                user = db.get_user_by_id(job_data['user_id'])
+                if user and user['is_banned']:
+                    logger.info(f"Job {job_data['job_id']} cancelled - user {job_data['user_id']} is banned")
+                    db.update_conversion_job(job_data['job_id'], status='failed', error_message='User account banned')
+                    
+                    # Notify user about cancelled job due to ban
+                    await self.send_ban_notification(job_data['user_id'], job_data['job_id'])
+                    
+                    # Cleanup files
+                    await self.cleanup_files(job_data.get('input_path'))
+                    continue
+                
                 # Update job status to processing
                 db.update_conversion_job(job_data['job_id'], status='processing', progress=10)
                 
@@ -89,6 +107,11 @@ class QueueManager:
         """Process a single conversion job with timeout"""
         try:
             logger.info(f"Starting conversion for job {job_data['job_id']}")
+            
+            # Double-check if user is still not banned
+            user = db.get_user_by_id(job_data['user_id'])
+            if user and user['is_banned']:
+                raise Exception("User account banned during processing")
             
             # Send processing started message
             await self.send_status_update(
@@ -236,6 +259,22 @@ class QueueManager:
                 
         except Exception as e:
             logger.error(f"Error sending status update to user {user_id}: {e}")
+    
+    async def send_ban_notification(self, user_id, job_id):
+        """Send notification that job was cancelled due to ban"""
+        try:
+            from telegram import Bot
+            bot = Bot(Config.BOT_TOKEN)
+            
+            await bot.send_message(
+                chat_id=user_id,
+                text="🚫 *Job Cancelled*\n\n"
+                     "Your conversion job has been cancelled because your account has been banned. "
+                     "If you believe this is a mistake, please contact the administrator.",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"Error sending ban notification to user {user_id}: {e}")
     
     def add_to_history(self, job_data, output_path):
         """Add conversion to history"""

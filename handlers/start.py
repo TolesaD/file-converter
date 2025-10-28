@@ -26,10 +26,25 @@ import os
 
 logger = logging.getLogger(__name__)
 
+async def is_user_banned(user_id):
+    """Check if user is banned"""
+    user = db.get_user_by_id(user_id)
+    return user and user['is_banned']
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send welcome message and main menu"""
     user = update.effective_user
     user_id = user.id
+    
+    # Check if user is banned
+    if await is_user_banned(user_id):
+        await update.message.reply_text(
+            "🚫 *Account Banned*\n\n"
+            "Your account has been banned from using this bot. "
+            "If you believe this is a mistake, please contact the administrator.",
+            parse_mode='Markdown'
+        )
+        return
     
     # Clear any existing context data
     context.user_data.clear()
@@ -65,6 +80,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send help information"""
     user_id = update.effective_user.id
+    
+    # Check if user is banned
+    if await is_user_banned(user_id):
+        await update.message.reply_text("🚫 Your account has been banned.")
+        return
+    
     is_admin = user_id in Config.ADMIN_IDS
     
     help_text = """
@@ -100,6 +121,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show user history - accessible to all users"""
+    user_id = update.effective_user.id
+    
+    # Check if user is banned
+    if await is_user_banned(user_id):
+        await update.message.reply_text("🚫 Your account has been banned.")
+        return
+    
     from handlers.history import show_history as show_user_history
     await show_user_history(update, context)
 
@@ -110,20 +138,30 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     callback_data = query.data
     user_id = query.from_user.id
-    is_admin = user_id in Config.ADMIN_IDS
     
-    logger.info(f"Callback received: {callback_data} from user {user_id}")
-    
-    # Handle admin-only callbacks - EXPANDED LIST
+    # Check if user is banned (except for admin callbacks)
     admin_callbacks = ["admin_stats", "admin_stats_live", "admin_stats_daily", 
                       "admin_stats_users", "admin_stats_formats", "admin_users",
                       "admin_broadcast", "admin_reports", "admin_refresh", "admin_panel",
                       "admin_view_users", "admin_banned_users", "broadcast_confirm",
                       "admin_view_user_", "admin_ban_user_", "admin_unban_user_", "admin_back_to_users"]
     
-    # Check if callback starts with any admin prefix
     is_admin_callback = any(callback_data.startswith(cb) for cb in admin_callbacks) or callback_data in admin_callbacks
     
+    if not is_admin_callback and await is_user_banned(user_id):
+        await query.edit_message_text(
+            "🚫 *Account Banned*\n\n"
+            "Your account has been banned from using this bot. "
+            "If you believe this is a mistake, please contact the administrator.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    is_admin = user_id in Config.ADMIN_IDS
+    
+    logger.info(f"Callback received: {callback_data} from user {user_id}")
+    
+    # Handle admin-only callbacks
     if is_admin_callback:
         if not is_admin:
             await query.edit_message_text("❌ Access denied. Admin only.")
@@ -133,6 +171,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_admin_callback(update, context)
         return
     
+    # Rest of your callback handling remains the same...
     if callback_data == "main_menu":
         await show_main_menu(query, user_id)
     elif callback_data == "commands":
@@ -184,7 +223,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(parts) == 2:
             await start_auto_conversion(query, context, parts[0], parts[1], 'video')
     elif callback_data.startswith("auto_convert_"):
-        # FIXED: This handles smart conversion suggestions from direct uploads
         parts = callback_data.replace("auto_convert_", "").split("_")
         if len(parts) == 2:
             source_format, target_format = parts

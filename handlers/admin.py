@@ -506,7 +506,7 @@ async def view_user_details(query, user_id):
     )
 
 async def ban_user(query, user_id):
-    """Ban a user"""
+    """Ban a user and notify them"""
     user = db.get_user_by_id(user_id)
     
     if not user:
@@ -521,8 +521,24 @@ async def ban_user(query, user_id):
     
     if success:
         username = f"@{user['username']}" if user['username'] else user['first_name']
+        
+        # Notify the banned user
+        try:
+            from telegram import Bot
+            bot = Bot(Config.BOT_TOKEN)
+            await bot.send_message(
+                chat_id=user_id,
+                text="🚫 *Account Banned*\n\n"
+                     "Your account has been banned from using this bot. "
+                     "If you believe this is a mistake, please contact the administrator.",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.warning(f"Could not notify banned user {user_id}: {e}")
+        
         await query.edit_message_text(
-            f"✅ Successfully banned user: `{username}` (ID: {user_id})",
+            f"✅ Successfully banned user: `{username}` (ID: {user_id})\n\n"
+            f"User has been notified and can no longer use the bot.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Users", callback_data="admin_users")]]),
             parse_mode='Markdown'
         )

@@ -3,17 +3,32 @@ from telegram.ext import ContextTypes
 from database import db
 from utils.keyboard_utils import get_main_menu_keyboard
 
+async def is_user_banned(user_id):
+    """Check if user is banned"""
+    user = db.get_user_by_id(user_id)
+    return user and user['is_banned']
+
 async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show user's conversion history"""
     user = update.effective_user
     user_id = user.id
+    
+    # Check if user is banned
+    if await is_user_banned(user_id):
+        await update.message.reply_text(
+            "🚫 *Account Banned*\n\n"
+            "Your account has been banned from using this bot. "
+            "If you believe this is a mistake, please contact the administrator.",
+            parse_mode='Markdown'
+        )
+        return
     
     history = db.get_user_history(user_id)
     
     if not history:
         await update.message.reply_text(
             "📊 You haven't done any conversions yet!\nUse the menu to start converting files.",
-            reply_markup=get_main_menu_keyboard(user_id)  # FIXED: Added user_id
+            reply_markup=get_main_menu_keyboard(user_id)
         )
         return
     
@@ -36,12 +51,23 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     
     user_id = query.from_user.id
+    
+    # Check if user is banned
+    if await is_user_banned(user_id):
+        await query.edit_message_text(
+            "🚫 *Account Banned*\n\n"
+            "Your account has been banned from using this bot. "
+            "If you believe this is a mistake, please contact the administrator.",
+            parse_mode='Markdown'
+        )
+        return
+    
     history = db.get_user_history(user_id)
     
     if not history:
         await query.edit_message_text(
             "📊 You haven't done any conversions yet!",
-            reply_markup=get_main_menu_keyboard(user_id)  # FIXED: Added user_id
+            reply_markup=get_main_menu_keyboard(user_id)
         )
         return
     
@@ -62,6 +88,6 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
     
     await query.edit_message_text(
         history_text,
-        reply_markup=get_main_menu_keyboard(user_id),  # FIXED: Added user_id
+        reply_markup=get_main_menu_keyboard(user_id),
         parse_mode='Markdown'
     )
