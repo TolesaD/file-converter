@@ -1,12 +1,8 @@
-[provider]
-id = "python"
-
-[python]
-version = "3.11"
-
 [phases.setup]
 cmds = [
-    "apt-get update && apt-get install -y ffmpeg && apt-get clean",
+    "apt-get update",
+    "apt-get install -y ffmpeg imagemagick poppler-utils ghostscript libmagic1",
+    "apt-get clean",
 ]
 
 [phases.install]
