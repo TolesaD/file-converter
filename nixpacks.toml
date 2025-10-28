@@ -1,0 +1,14 @@
+[phases.setup]
+cmds = [
+    "apt-get update",
+    "apt-get install -y ffmpeg imagemagick poppler-utils ghostscript libmagic1",
+    "apt-get clean",
+]
+
+[phases.install]
+cmds = [
+    "pip install -r requirements.txt",
+]
+
+[start]
+cmd = "python bot.py"

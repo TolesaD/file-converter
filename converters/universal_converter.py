@@ -15,6 +15,19 @@ class UniversalConverter:
             for fmt in formats:
                 self.supported_formats[fmt] = category
     
+    async def _check_ffmpeg_available(self):
+        """Check if FFmpeg is available"""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                'ffmpeg', '-version',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            return process.returncode == 0
+        except:
+            return False
+
     async def convert_file(self, input_path, output_format, input_extension=None):
         """Universal file conversion that handles ALL 72+ formats"""
         try:
@@ -91,6 +104,10 @@ class UniversalConverter:
     async def _convert_audio(self, input_path, output_format, input_extension):
         """Convert audio files using FFmpeg"""
         try:
+            # Check FFmpeg availability
+            if not await self._check_ffmpeg_available():
+                raise Exception("FFmpeg is required for audio conversion but is not installed")
+            
             output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
             
             cmd = [
@@ -136,6 +153,10 @@ class UniversalConverter:
     async def _convert_video(self, input_path, output_format, input_extension):
         """Convert video files using FFmpeg"""
         try:
+            # Check FFmpeg availability
+            if not await self._check_ffmpeg_available():
+                raise Exception("FFmpeg is required for video conversion but is not installed")
+            
             output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
             
             cmd = [
@@ -492,14 +513,19 @@ class UniversalConverter:
             raise Exception(f"PowerPoint to PDF conversion failed: {str(e)}")
     
     async def _convert_with_ffmpeg(self, input_path, output_format):
-        """Generic FFmpeg conversion fallback"""
+        """Generic FFmpeg conversion fallback with better error handling"""
         try:
+            # Check if FFmpeg is available
+            if not await self._check_ffmpeg_available():
+                raise Exception("FFmpeg is not installed or not available in PATH")
+            
             output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
             
             cmd = [
                 'ffmpeg', '-i', input_path,
                 '-y',
                 '-loglevel', 'error',
+                '-hide_banner',
                 output_path
             ]
             
@@ -514,8 +540,12 @@ class UniversalConverter:
             if process.returncode == 0 and os.path.exists(output_path):
                 return output_path
             else:
-                raise Exception("FFmpeg conversion failed")
+                error_msg = stderr.decode('utf-8', errors='ignore') if stderr else "FFmpeg conversion failed"
+                logger.error(f"FFmpeg error: {error_msg}")
+                raise Exception(f"FFmpeg conversion failed: {error_msg}")
                 
+        except asyncio.TimeoutError:
+            raise Exception("FFmpeg conversion timed out")
         except Exception as e:
             raise Exception(f"FFmpeg conversion failed: {str(e)}")
 
