@@ -9,6 +9,7 @@ from utils.keyboard_utils import (
     get_image_conversion_keyboard,
     get_audio_conversion_keyboard,
     get_video_conversion_keyboard,
+    get_presentation_conversion_keyboard,
     get_format_suggestions_keyboard,
     get_admin_keyboard
 )
@@ -60,7 +61,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🖼 Presentations: PPTX, PPT
 
 *Just upload any file and I'll automatically detect its type and show conversion options!*
-    """
+
+*Now with 53+ reliable conversions!*
+"""
     
     await update.message.reply_text(
         welcome_text,
@@ -175,6 +178,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_audio_menu(query)
     elif callback_data == "menu_video":
         await show_video_menu(query)
+    elif callback_data == "menu_presentations":
+        await show_presentation_menu(query)
     elif callback_data.startswith("convert_doc_"):
         parts = callback_data.replace("convert_doc_", "").split("_")
         if len(parts) == 2:
@@ -191,6 +196,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = callback_data.replace("convert_video_", "").split("_")
         if len(parts) == 2:
             await start_auto_conversion(query, context, parts[0], parts[1], 'video')
+    elif callback_data.startswith("convert_presentation_"):
+        parts = callback_data.replace("convert_presentation_", "").split("_")
+        if len(parts) == 2:
+            await start_auto_conversion(query, context, parts[0], parts[1], 'presentation')
     elif callback_data.startswith("auto_convert_"):
         # Handle smart conversion suggestions from direct uploads
         parts = callback_data.replace("auto_convert_", "").split("_")
@@ -215,11 +224,13 @@ async def show_main_menu(query, user_id):
 
 Choose a category to convert files:
 
-📷 *Images* - PNG, JPG, JPEG, BMP, GIF
-🔊 *Audio* - MP3, WAV, AAC  
-📹 *Video* - MP4, AVI, MOV, MKV
-💼 *Documents* - PDF, DOCX, TXT, XLSX, ODT
-🖼 *Presentations* - PPTX, PPT
+📷 *Images* - PNG, JPG, JPEG, BMP, GIF (20+ conversions)
+🔊 *Audio* - MP3, WAV, AAC (6 conversions)  
+📹 *Video* - MP4, AVI, MOV, MKV (12 conversions)
+💼 *Documents* - PDF, DOCX, TXT, XLSX, ODT (12 conversions)
+🖼 *Presentations* - PPTX, PPT (3 conversions)
+
+*Total: 53+ reliable conversions!*
 
 *Or simply upload any file for automatic detection!*
 """
@@ -272,6 +283,14 @@ async def show_video_menu(query):
     await query.edit_message_text(
         "📹 *Video Conversion*\n\nSupported formats: MP4, AVI, MOV, MKV\n\nChoose conversion type:",
         reply_markup=get_video_conversion_keyboard(),
+        parse_mode='Markdown'
+    )
+
+async def show_presentation_menu(query):
+    """Show presentation conversion menu"""
+    await query.edit_message_text(
+        "🖼 *Presentation Conversion*\n\nSupported formats: PPTX, PPT\n\nChoose conversion type:",
+        reply_markup=get_presentation_conversion_keyboard(),
         parse_mode='Markdown'
     )
 

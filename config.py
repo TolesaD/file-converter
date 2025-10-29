@@ -29,7 +29,7 @@ class Config:
     active_jobs = 0
     job_lock = asyncio.Lock()
     
-    # Simplified supported formats
+    # Complete supported formats
     SUPPORTED_FORMATS = {
         'image': ['png', 'jpg', 'jpeg', 'bmp', 'gif'],
         'audio': ['mp3', 'wav', 'aac'],
@@ -47,12 +47,12 @@ class Config:
         'presentation': '🖼 Presentations'
     }
     
-    # Conversion mapping - what can be converted to what
+    # COMPLETE Conversion mapping - what can be converted to what
     CONVERSION_MAP = {
         'image': {
             'png': ['jpg', 'jpeg', 'bmp', 'gif', 'pdf'],
-            'jpg': ['png', 'bmp', 'gif', 'pdf'],
-            'jpeg': ['png', 'bmp', 'gif', 'pdf'],
+            'jpg': ['png', 'jpeg', 'bmp', 'gif', 'pdf'],
+            'jpeg': ['png', 'jpg', 'bmp', 'gif', 'pdf'],
             'bmp': ['png', 'jpg', 'jpeg', 'gif', 'pdf'],
             'gif': ['png', 'jpg', 'jpeg', 'bmp', 'pdf']
         },
@@ -68,11 +68,11 @@ class Config:
             'mkv': ['mp4', 'avi', 'mov']
         },
         'document': {
-            'pdf': ['docx', 'txt'],
+            'pdf': ['docx', 'txt', 'xlsx'],
             'docx': ['pdf', 'txt'],
             'txt': ['pdf', 'docx'],
             'xlsx': ['pdf'],
-            'odt': ['pdf', 'docx']
+            'odt': ['pdf']
         },
         'presentation': {
             'pptx': ['pdf'],

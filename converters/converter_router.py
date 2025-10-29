@@ -81,7 +81,7 @@ class ConverterRouter:
         if input_category == 'image':
             supported.append('pdf')  # Images to PDF
         elif input_extension == 'pdf':
-            supported.extend(['jpg', 'png', 'docx', 'txt'])  # PDF to various
+            supported.extend(['jpg', 'png', 'docx', 'txt', 'xlsx'])  # PDF to various
         elif input_category == 'video':
             supported.append('gif')  # Video to GIF
         
@@ -89,11 +89,11 @@ class ConverterRouter:
         supported = list(set(supported))
         
         # Sort by most common formats first
-        common_formats = ['pdf', 'jpg', 'png', 'mp3', 'mp4', 'docx', 'txt']
+        common_formats = ['pdf', 'jpg', 'png', 'mp3', 'mp4', 'docx', 'txt', 'wav', 'avi', 'mov', 'mkv', 'aac', 'xlsx']
         sorted_supported = [fmt for fmt in common_formats if fmt in supported]
         sorted_supported.extend([fmt for fmt in supported if fmt not in common_formats])
         
-        return sorted_supported[:12]  # Limit to 12 options
+        return sorted_supported[:15]  # Limit to 15 options
 
 # Global router instance
 converter_router = ConverterRouter()
