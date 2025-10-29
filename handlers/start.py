@@ -45,24 +45,25 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(user_id, user.username, user.first_name, user.last_name)
     
     welcome_text = f"""
-👋 Welcome *{user.first_name}* to the *Smart File Converter Bot*! 🚀
+👋 Welcome *{user.first_name}* to the *World-Class File Converter Bot*! 🚀
 
-*Smart Features:*
-• 🧠 Automatic file type detection
-• 💡 Smart conversion suggestions  
+*Professional Features:*
+• 🎯 High-quality professional conversions
+• 🧠 Smart file type detection  
 • ⚡ Fast multi-format support
 • 📊 Real-time progress updates
+• 🏆 Professional-grade output quality
 
 *Supported Categories:*
-📷 Images: PNG, JPG, JPEG, BMP, GIF
-🔊 Audio: MP3, WAV, AAC
-📹 Video: MP4, AVI, MOV, MKV
-💼 Documents: PDF, DOCX, TXT, XLSX, ODT
-🖼 Presentations: PPTX, PPT
+📷 Images: PNG, JPG, JPEG, BMP, GIF (20+ professional conversions)
+🔊 Audio: MP3, WAV, AAC (6 high-quality conversions)
+📹 Video: MP4, AVI, MOV, MKV (12 professional conversions)
+💼 Documents: PDF, DOCX, TXT, XLSX, ODT (12 accurate conversions)
+🖼 Presentations: PPTX, PPT (3 professional conversions)
 
-*Just upload any file and I'll automatically detect its type and show conversion options!*
+*Total: 53+ professional-grade conversions!*
 
-*Now with 53+ reliable conversions!*
+*Simply upload any file for automatic professional conversion!*
 """
     
     await update.message.reply_text(

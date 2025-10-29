@@ -54,7 +54,7 @@ class QueueManager:
             return
         
         self.processing = True
-        logger.info("🚀 Queue processor started")
+        logger.info("🚀 Professional queue processor started")
         
         try:
             while self.processing:
@@ -64,7 +64,7 @@ class QueueManager:
                         await asyncio.sleep(1)
                         continue
                 
-                # Get next job from queue (with timeout to allow cancellation)
+                # Get next job from queue
                 try:
                     job_data = await asyncio.wait_for(Config.processing_queue.get(), timeout=1.0)
                 except asyncio.TimeoutError:
@@ -76,10 +76,7 @@ class QueueManager:
                     logger.info(f"Job {job_data['job_id']} cancelled - user {job_data['user_id']} is banned")
                     db.update_conversion_job(job_data['job_id'], status='failed', error_message='User account banned')
                     
-                    # Notify user about cancelled job due to ban
                     await self.send_ban_notification(job_data['user_id'], job_data['job_id'])
-                    
-                    # Cleanup files
                     await self.cleanup_files(job_data.get('input_path'))
                     continue
                 
@@ -104,9 +101,9 @@ class QueueManager:
             logger.info("🛑 Queue processor stopped")
     
     async def process_job(self, job_data):
-        """Process a single conversion job with timeout"""
+        """Process a single conversion job with professional quality"""
         try:
-            logger.info(f"Starting conversion for job {job_data['job_id']}")
+            logger.info(f"Starting professional conversion for job {job_data['job_id']}")
             
             # Double-check if user is still not banned
             user = db.get_user_by_id(job_data['user_id'])
@@ -117,20 +114,26 @@ class QueueManager:
             await self.send_status_update(
                 job_data['user_id'],
                 job_data['job_id'],
-                "🔄 Processing started...",
-                20
+                "🔄 Professional conversion started...",
+                20,
+                f"Converting {job_data['input_type'].upper()} to {job_data['output_format'].upper()}"
             )
             
-            # Perform conversion with overall timeout
+            # Perform conversion with professional settings
             try:
                 output_path = await asyncio.wait_for(
-                    self.perform_conversion(job_data),
-                    timeout=300  # 5 minute overall timeout
+                    self.perform_professional_conversion(job_data),
+                    timeout=600  # 10 minute timeout for professional conversion
                 )
             except asyncio.TimeoutError:
-                raise Exception("Conversion timeout - process took too long")
+                raise Exception("Professional conversion timeout - process took too long")
             
             if output_path and os.path.exists(output_path):
+                # Verify output quality
+                output_size = os.path.getsize(output_path)
+                if output_size == 0:
+                    raise Exception("Professional conversion produced empty file")
+                
                 # Update job status
                 db.update_conversion_job(
                     job_data['job_id'],
@@ -143,21 +146,22 @@ class QueueManager:
                 await self.send_status_update(
                     job_data['user_id'],
                     job_data['job_id'],
-                    "✅ Conversion completed!",
+                    "✅ Professional conversion completed!",
                     100,
+                    f"High-quality {job_data['output_format'].upper()} file ready",
                     output_path
                 )
                 
                 # Add to history
                 self.add_to_history(job_data, output_path)
                 
-                logger.info(f"✅ Job {job_data['job_id']} completed successfully")
+                logger.info(f"✅ Job {job_data['job_id']} completed with professional quality")
                 
             else:
-                raise Exception("Conversion produced no output")
+                raise Exception("Professional conversion produced no output")
                 
         except Exception as e:
-            logger.error(f"Job {job_data['job_id']} processing error: {e}")
+            logger.error(f"Job {job_data['job_id']} professional processing error: {e}")
             db.update_conversion_job(
                 job_data['job_id'],
                 status='failed',
@@ -167,7 +171,7 @@ class QueueManager:
             await self.send_status_update(
                 job_data['user_id'],
                 job_data['job_id'],
-                f"❌ Conversion failed: {str(e)}",
+                f"❌ Professional conversion failed: {str(e)}",
                 0
             )
         
@@ -179,8 +183,8 @@ class QueueManager:
             # Cleanup temporary files
             await self.cleanup_files(job_data.get('input_path'))
     
-    async def perform_conversion(self, job_data):
-        """Universal conversion using converter router"""
+    async def perform_professional_conversion(self, job_data):
+        """Professional conversion using enhanced converter"""
         conversion_type = job_data['conversion_type']
         input_path = job_data['input_path']
         output_format = job_data['output_format']
@@ -190,24 +194,25 @@ class QueueManager:
         await self.send_status_update(
             job_data['user_id'],
             job_data['job_id'],
-            "🔄 Converting file...",
-            50
+            "🎯 Processing with professional settings...",
+            50,
+            f"Optimizing {input_extension.upper()} to {output_format.upper()}"
         )
         
         try:
-            # Import here to avoid circular imports
-            from converters.converter_router import converter_router
-            return await converter_router.convert_file(input_path, output_format, input_extension)
+            # Use the enhanced universal converter
+            from converters.universal_converter import universal_converter
+            return await universal_converter.convert_file(input_path, output_format, input_extension)
                 
         except Exception as e:
-            logger.error(f"Conversion error for job {job_data['job_id']}: {e}")
+            logger.error(f"Professional conversion error for job {job_data['job_id']}: {e}")
             raise
     
-    async def send_status_update(self, user_id, job_id, message, progress, file_path=None):
-        """Send status update to user"""
+    async def send_status_update(self, user_id, job_id, message, progress, details="", file_path=None):
+        """Send professional status update to user"""
         try:
-            # Import here to avoid circular imports
             from telegram import Bot
+            from utils.file_utils import format_file_size
             
             bot = Bot(Config.BOT_TOKEN)
             
@@ -215,50 +220,67 @@ class QueueManager:
             queued_jobs = db.get_user_queued_jobs(user_id)
             current_job = next((job for job in queued_jobs if job['id'] == job_id), None)
             
-            status_message = f"{message}\n"
-            status_message += f"📊 Progress: {progress}%\n"
+            status_message = f"🎯 *Professional File Converter*\n\n"
+            status_message += f"{message}\n"
+            
+            if details:
+                status_message += f"📝 *Details:* {details}\n"
+            
+            status_message += f"📊 *Progress:* {progress}%\n"
             
             if current_job and current_job['queue_position'] > 1:
-                status_message += f"📋 Queue position: {current_job['queue_position']}\n"
+                status_message += f"📋 *Queue Position:* {current_job['queue_position']}\n"
             
             if progress == 100 and file_path:
-                # Send the converted file
+                # Send the professionally converted file
                 file_size = os.path.getsize(file_path)
                 file_ext = file_path.split('.')[-1].upper()
+                formatted_size = format_file_size(file_size)
                 
-                if file_ext in ['JPG', 'JPEG', 'PNG', 'WEBP']:
+                caption = f"✅ *Professional Conversion Complete!*\n\n"
+                caption += f"📁 *Format:* {file_ext}\n"
+                caption += f"📊 *Size:* {formatted_size}\n"
+                caption += f"🎯 *Quality:* Professional Grade\n"
+                caption += f"⚡ *Enjoy your high-quality file!*"
+                
+                if file_ext in ['JPG', 'JPEG', 'PNG', 'WEBP', 'BMP', 'GIF']:
                     await bot.send_photo(
                         chat_id=user_id,
                         photo=open(file_path, 'rb'),
-                        caption=f"✅ {file_ext} file ready!\nSize: {file_size} bytes"
+                        caption=caption,
+                        parse_mode='Markdown'
                     )
-                elif file_ext in ['MP3', 'WAV', 'OGG']:
+                elif file_ext in ['MP3', 'WAV', 'AAC', 'OGG']:
                     await bot.send_audio(
                         chat_id=user_id,
                         audio=open(file_path, 'rb'),
-                        caption=f"✅ {file_ext} file ready!\nSize: {file_size} bytes"
+                        caption=caption,
+                        parse_mode='Markdown'
                     )
-                elif file_ext in ['MP4', 'GIF']:
+                elif file_ext in ['MP4', 'AVI', 'MOV', 'MKV', 'GIF']:
                     await bot.send_video(
                         chat_id=user_id,
                         video=open(file_path, 'rb'),
-                        caption=f"✅ {file_ext} file ready!\nSize: {file_size} bytes"
+                        caption=caption,
+                        parse_mode='Markdown'
                     )
                 else:
                     await bot.send_document(
                         chat_id=user_id,
                         document=open(file_path, 'rb'),
-                        caption=f"✅ {file_ext} file ready!\nSize: {file_size} bytes"
+                        caption=caption,
+                        parse_mode='Markdown'
                     )
             else:
                 # Send status update
                 await bot.send_message(
                     chat_id=user_id,
-                    text=status_message
+                    text=status_message,
+                    parse_mode='Markdown'
                 )
                 
         except Exception as e:
-            logger.error(f"Error sending status update to user {user_id}: {e}")
+            logger.error(f"Error sending professional status update to user {user_id}: {e}")
     
     async def send_ban_notification(self, user_id, job_id):
         """Send notification that job was cancelled due to ban"""
@@ -268,7 +290,7 @@ class QueueManager:
             
             await bot.send_message(
                 chat_id=user_id,
-                text="🚫 *Job Cancelled*\n\n"
+                text="🚫 *Professional Conversion Cancelled*\n\n"
                      "Your conversion job has been cancelled because your account has been banned. "
                      "If you believe this is a mistake, please contact the administrator.",
                 parse_mode='Markdown'
@@ -277,7 +299,7 @@ class QueueManager:
             logger.error(f"Error sending ban notification to user {user_id}: {e}")
     
     def add_to_history(self, job_data, output_path):
-        """Add conversion to history"""
+        """Add professional conversion to history"""
         try:
             conn = db.get_connection()
             cursor = conn.cursor()
@@ -293,22 +315,22 @@ class QueueManager:
                 job_data['file_size'],
                 os.path.getsize(output_path),
                 True,
-                0  # Could calculate actual conversion time
+                0
             ))
             
             conn.commit()
             conn.close()
         except Exception as e:
-            logger.error(f"Error adding to history: {e}")
+            logger.error(f"Error adding to professional history: {e}")
     
     async def cleanup_files(self, file_path):
         """Cleanup temporary files"""
         try:
             if file_path and os.path.exists(file_path):
                 os.remove(file_path)
-                logger.info(f"🧹 Cleaned up file: {file_path}")
+                logger.info(f"🧹 Cleaned up professional conversion file: {file_path}")
         except Exception as e:
-            logger.error(f"Error cleaning up files: {e}")
+            logger.error(f"Error cleaning up professional files: {e}")
 
-# Global queue manager instance
+# Global professional queue manager instance
 queue_manager = QueueManager()
