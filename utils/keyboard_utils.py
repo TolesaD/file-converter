@@ -2,6 +2,9 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import Config
 from converters.converter_router import converter_router
 import asyncio
+import logging  # ADD THIS IMPORT
+
+logger = logging.getLogger(__name__)  # ADD THIS LINE
 
 def get_main_menu_keyboard(user_id):
     """Get main menu keyboard"""
@@ -152,7 +155,6 @@ def get_format_suggestions_keyboard(file_extension, file_type):
     # Get supported conversions from router
     try:
         # Run the async function in a sync context
-        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         supported_formats = loop.run_until_complete(

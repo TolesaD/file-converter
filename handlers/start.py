@@ -47,22 +47,23 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = f"""
 👋 Welcome *{user.first_name}* to the *World-Class File Converter Bot*! 🚀
 
-*Smart Features:*
-• 🧠 **Automatic file type detection** - Just upload any file!
-• 💡 **Smart conversion suggestions** - See all possible options
-• ⚡ **Fast multi-format support** - 53+ professional conversions
-• 📊 **Real-time progress updates** - Know what's happening
-• 🎯 **Professional quality** - High-quality output every time
+*Professional Features:*
+• 🎯 High-quality professional conversions
+• 🧠 Smart file type detection  
+• ⚡ Fast multi-format support
+• 📊 Real-time progress updates
+• 🏆 Professional-grade output quality
 
-*Quick Start:*
-1. Click *"📁 Convert File"* below
-2. Upload any file (up to 2GB)
-3. Choose from smart suggestions
-4. Get your converted file!
+*Supported Categories:*
+📷 Images: PNG, JPG, JPEG, BMP, GIF (20+ professional conversions)
+🔊 Audio: MP3, WAV, AAC (6 high-quality conversions)
+📹 Video: MP4, AVI, MOV, MKV (12 professional conversions)
+💼 Documents: PDF, DOCX, TXT, XLSX, ODT (12 accurate conversions)
+🖼 Presentations: PPTX, PPT (3 professional conversions)
 
-*Or browse specific categories:*
-📷 Images • 🔊 Audio • 📹 Video • 💼 Documents • 🖼 Presentations
+*Total: 53+ professional-grade conversions!*
 
+*Simply upload any file for automatic professional conversion!*
 """
     
     await update.message.reply_text(
