@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from config import Config
 
@@ -7,7 +8,7 @@ from config import Config
 from handlers.start import start_command, help_command, handle_callback, show_history
 from handlers.conversion import handle_file
 from handlers.history import show_history as show_user_history, handle_history_callback
-from handlers.admin import admin_command, show_admin_stats, handle_admin_callback, handle_broadcast_message, confirm_broadcast
+from handlers.admin import admin_command, show_admin_stats, handle_admin_callback, handle_broadcast_message
 
 # Set up logging
 logging.basicConfig(
@@ -49,20 +50,21 @@ def main():
     application.add_handler(CommandHandler("stats", show_admin_stats))
     application.add_handler(CommandHandler("admin", admin_command))
     
-    # Callback query handlers
+    # Callback query handlers - THIS MUST COME BEFORE MESSAGE HANDLERS
     application.add_handler(CallbackQueryHandler(handle_callback))
     
-    # File handlers
+    # File handlers - for document, photo, audio, video uploads
     application.add_handler(MessageHandler(
         filters.Document.ALL | filters.PHOTO | filters.AUDIO | filters.VIDEO,
         handle_file
     ))
     
-    # Broadcast message handler
+    # Broadcast message handler - ONLY for admin broadcast messages
+    # This should be more specific to avoid intercepting regular messages
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND,
         handle_broadcast_message
-    ))
+    ), group=1)  # Add to a different group
     
     # Start the bot
     if os.getenv('RAILWAY_ENVIRONMENT'):
@@ -90,5 +92,4 @@ def main():
         application.run_polling()
 
 if __name__ == '__main__':
-    import asyncio
     main()

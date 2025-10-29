@@ -47,23 +47,22 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = f"""
 👋 Welcome *{user.first_name}* to the *World-Class File Converter Bot*! 🚀
 
-*Professional Features:*
-• 🎯 High-quality professional conversions
-• 🧠 Smart file type detection  
-• ⚡ Fast multi-format support
-• 📊 Real-time progress updates
-• 🏆 Professional-grade output quality
+*Smart Features:*
+• 🧠 **Automatic file type detection** - Just upload any file!
+• 💡 **Smart conversion suggestions** - See all possible options
+• ⚡ **Fast multi-format support** - 53+ professional conversions
+• 📊 **Real-time progress updates** - Know what's happening
+• 🎯 **Professional quality** - High-quality output every time
 
-*Supported Categories:*
-📷 Images: PNG, JPG, JPEG, BMP, GIF (20+ professional conversions)
-🔊 Audio: MP3, WAV, AAC (6 high-quality conversions)
-📹 Video: MP4, AVI, MOV, MKV (12 professional conversions)
-💼 Documents: PDF, DOCX, TXT, XLSX, ODT (12 accurate conversions)
-🖼 Presentations: PPTX, PPT (3 professional conversions)
+*Quick Start:*
+1. Click *"📁 Convert File"* below
+2. Upload any file (up to 2GB)
+3. Choose from smart suggestions
+4. Get your converted file!
 
-*Total: 53+ professional-grade conversions!*
+*Or browse specific categories:*
+📷 Images • 🔊 Audio • 📹 Video • 💼 Documents • 🖼 Presentations
 
-*Simply upload any file for automatic professional conversion!*
 """
     
     await update.message.reply_text(
@@ -213,6 +212,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif callback_data == "history":
         from handlers.history import handle_history_callback
         await handle_history_callback(update, context)
+    elif callback_data == "convert_file":
+        # This is the main convert file button - show upload prompt
+        await query.edit_message_text(
+            "📁 *File Upload*\n\nPlease upload any file you want to convert.\n\n"
+            "I'll automatically detect the file type and show you all available conversion options!",
+            parse_mode='Markdown'
+        )
+    elif callback_data == "browse_formats":
+        await show_commands_menu(query, user_id)
     elif callback_data == "none":
         pass
     else:

@@ -6,6 +6,7 @@ import asyncio
 def get_main_menu_keyboard(user_id):
     """Get main menu keyboard"""
     keyboard = [
+        [InlineKeyboardButton("📁 Convert File", callback_data="convert_file")],
         [InlineKeyboardButton("📷 Convert Images", callback_data="menu_images")],
         [InlineKeyboardButton("🔊 Convert Audio", callback_data="menu_audio")],
         [InlineKeyboardButton("📹 Convert Video", callback_data="menu_video")],

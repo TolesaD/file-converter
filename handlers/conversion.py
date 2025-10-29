@@ -7,6 +7,7 @@ from database import db
 from queue_manager import queue_manager
 from utils.keyboard_utils import get_main_menu_keyboard, get_format_suggestions_keyboard
 from handlers.start import detect_file_type
+from config import Config  # ADD THIS IMPORT
 import logging
 
 logger = logging.getLogger(__name__)
