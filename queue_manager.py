@@ -209,7 +209,7 @@ class QueueManager:
             raise
     
     async def send_status_update(self, user_id, job_id, message, progress, details="", file_path=None):
-        """Send professional status update to user"""
+        """Send professional status update to user with file size handling"""
         try:
             from telegram import Bot
             from utils.file_utils import format_file_size
@@ -232,10 +232,31 @@ class QueueManager:
                 status_message += f"📋 *Queue Position:* {current_job['queue_position']}\n"
             
             if progress == 100 and file_path:
-                # Send the professionally converted file
+                # Check file size before sending
                 file_size = os.path.getsize(file_path)
                 file_ext = file_path.split('.')[-1].upper()
                 formatted_size = format_file_size(file_size)
+                
+                # Telegram file size limits
+                MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+                
+                if file_size > MAX_FILE_SIZE:
+                    # File too large - send informative message
+                    caption = f"📁 *File Converted Successfully!*\n\n"
+                    caption += f"✅ *Conversion:* Completed\n"
+                    caption += f"📊 *Size:* {formatted_size} (Exceeds Telegram's 50MB limit)\n"
+                    caption += f"🎯 *Format:* {file_ext}\n"
+                    caption += f"💡 *Solution:* The file was converted successfully but is too large for Telegram\n"
+                    caption += f"🔧 *Tip:* Try converting to a different format or compress the original file"
+                    
+                    await bot.send_message(
+                        chat_id=user_id,
+                        text=caption,
+                        parse_mode='Markdown'
+                    )
+                    
+                    logger.info(f"File too large for Telegram: {formatted_size}")
+                    return
                 
                 caption = f"✅ *Professional Conversion Complete!*\n\n"
                 caption += f"📁 *Format:* {file_ext}\n"
@@ -243,36 +264,94 @@ class QueueManager:
                 caption += f"🎯 *Quality:* Professional Grade\n"
                 caption += f"⚡ *Enjoy your high-quality file!*"
                 
-                if file_ext in ['JPG', 'JPEG', 'PNG', 'WEBP', 'BMP', 'GIF']:
-                    await bot.send_photo(
-                        chat_id=user_id,
-                        photo=open(file_path, 'rb'),
-                        caption=caption,
-                        parse_mode='Markdown'
-                    )
-                elif file_ext in ['MP3', 'WAV', 'AAC', 'OGG']:
-                    await bot.send_audio(
-                        chat_id=user_id,
-                        audio=open(file_path, 'rb'),
-                        caption=caption,
-                        parse_mode='Markdown'
-                    )
-                elif file_ext in ['MP4', 'AVI', 'MOV', 'MKV', 'GIF']:
-                    await bot.send_video(
-                        chat_id=user_id,
-                        video=open(file_path, 'rb'),
-                        caption=caption,
-                        parse_mode='Markdown'
-                    )
-                else:
-                    await bot.send_document(
-                        chat_id=user_id,
-                        document=open(file_path, 'rb'),
-                        caption=caption,
-                        parse_mode='Markdown'
-                    )
+                try:
+                    if file_ext in ['JPG', 'JPEG', 'PNG', 'WEBP', 'BMP']:
+                        # Send images as photos (smaller files)
+                        if file_size < 10 * 1024 * 1024:  # 10MB limit for photos
+                            await bot.send_photo(
+                                chat_id=user_id,
+                                photo=open(file_path, 'rb'),
+                                caption=caption,
+                                parse_mode='Markdown'
+                            )
+                        else:
+                            await bot.send_document(
+                                chat_id=user_id,
+                                document=open(file_path, 'rb'),
+                                caption=caption,
+                                parse_mode='Markdown'
+                            )
+                    elif file_ext == 'GIF':
+                        # Always send GIFs as documents to preserve animation
+                        await bot.send_document(
+                            chat_id=user_id,
+                            document=open(file_path, 'rb'),
+                            caption=caption,
+                            parse_mode='Markdown'
+                        )
+                    elif file_ext in ['MP3', 'WAV', 'AAC', 'OGG']:
+                        # For audio files, use audio method for smaller files
+                        if file_size < 20 * 1024 * 1024:  # 20MB limit for audio
+                            await bot.send_audio(
+                                chat_id=user_id,
+                                audio=open(file_path, 'rb'),
+                                caption=caption,
+                                parse_mode='Markdown'
+                            )
+                        else:
+                            await bot.send_document(
+                                chat_id=user_id,
+                                document=open(file_path, 'rb'),
+                                caption=caption,
+                                parse_mode='Markdown'
+                            )
+                    elif file_ext in ['MP4', 'AVI', 'MOV', 'MKV']:
+                        # For video files, use video method for smaller files
+                        if file_size < 20 * 1024 * 1024:  # 20MB limit for videos
+                            await bot.send_video(
+                                chat_id=user_id,
+                                video=open(file_path, 'rb'),
+                                caption=caption,
+                                parse_mode='Markdown'
+                            )
+                        else:
+                            await bot.send_document(
+                                chat_id=user_id,
+                                document=open(file_path, 'rb'),
+                                caption=caption,
+                                parse_mode='Markdown'
+                            )
+                    else:
+                        # All other files as documents
+                        await bot.send_document(
+                            chat_id=user_id,
+                            document=open(file_path, 'rb'),
+                            caption=caption,
+                            parse_mode='Markdown'
+                        )
+                except Exception as file_error:
+                    logger.error(f"Error sending file with specific method: {file_error}")
+                    # Fallback to document for all file types
+                    try:
+                        await bot.send_document(
+                            chat_id=user_id,
+                            document=open(file_path, 'rb'),
+                            caption=caption + "\n\n📝 *Sent as document for better compatibility*",
+                            parse_mode='Markdown'
+                        )
+                    except Exception as doc_error:
+                        logger.error(f"Even document fallback failed: {doc_error}")
+                        # Last resort - send message only
+                        await bot.send_message(
+                            chat_id=user_id,
+                            text=f"✅ *Conversion Complete but couldn't send file*\n\n"
+                                 f"📁 *File:* {os.path.basename(file_path)}\n"
+                                 f"📊 *Size:* {formatted_size}\n"
+                                 f"💡 *Issue:* File is too large or format not supported by Telegram",
+                            parse_mode='Markdown'
+                        )
             else:
-                # Send status update
+                # Send status update without file
                 await bot.send_message(
                     chat_id=user_id,
                     text=status_message,
