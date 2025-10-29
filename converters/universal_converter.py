@@ -29,7 +29,7 @@ class UniversalConverter:
             return False
 
     async def convert_file(self, input_path, output_format, input_extension=None):
-        """Universal file conversion for all supported formats"""
+        """Professional file conversion with high quality"""
         try:
             if not input_extension:
                 input_extension = os.path.splitext(input_path)[1].lstrip('.').lower()
@@ -64,20 +64,20 @@ class UniversalConverter:
             raise
     
     async def _convert_image(self, input_path, output_format, input_extension):
-        """Convert image files - ALL 20 COMBINATIONS SUPPORTED"""
+        """Professional image conversion with high quality"""
         try:
-            from PIL import Image, ImageSequence, ImageEnhance
+            from PIL import Image, ImageSequence
             
             output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
             
-            # Handle GIF output specially
-            if output_format == 'gif':
-                return await self._create_animated_gif(input_path, output_path, input_extension)
+            # Handle GIF conversions specially
+            if input_extension == 'gif' or output_format == 'gif':
+                return await self._convert_gif_advanced(input_path, output_path, input_extension, output_format)
             
             with Image.open(input_path) as img:
-                # Handle format-specific conversions
+                # Handle format-specific conversions with professional settings
                 if output_format in ['jpg', 'jpeg']:
-                    # Convert to RGB for JPEG formats
+                    # Professional JPEG conversion
                     if img.mode in ('RGBA', 'LA', 'P'):
                         if img.mode == 'P' and 'transparency' in img.info:
                             img = img.convert('RGBA')
@@ -89,121 +89,146 @@ class UniversalConverter:
                         img = background
                     elif img.mode != 'RGB':
                         img = img.convert('RGB')
-                
-                # Save with appropriate settings
-                save_kwargs = {}
-                if output_format in ['jpg', 'jpeg']:
-                    save_kwargs = {'format': 'JPEG', 'quality': 95, 'optimize': True}
+                    
+                    # High quality JPEG save
+                    img.save(output_path, 'JPEG', quality=95, optimize=True, progressive=True)
+                    
                 elif output_format == 'png':
-                    save_kwargs = {'format': 'PNG', 'optimize': True}
+                    # High quality PNG with optimization
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    img.save(output_path, 'PNG', optimize=True)
+                    
                 elif output_format == 'bmp':
-                    save_kwargs = {'format': 'BMP'}
+                    # BMP conversion
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    img.save(output_path, 'BMP')
+                    
                 elif output_format == 'pdf':
-                    # Convert image to PDF
-                    return await self._image_to_pdf(input_path, output_path)
+                    # Professional image to PDF conversion
+                    return await self._image_to_pdf_advanced(input_path, output_path)
                 else:
-                    save_kwargs = {'format': output_format.upper()}
+                    # Fallback for other formats
+                    img.save(output_path, format=output_format.upper())
                 
-                if output_format != 'pdf':  # PDF handled separately
-                    img.save(output_path, **save_kwargs)
-                    return output_path
+                return output_path
                 
         except Exception as e:
             logger.error(f"Image conversion error: {e}")
-            raise Exception(f"Image conversion failed: {str(e)}")
+            raise Exception(f"Professional image conversion failed: {str(e)}")
     
-    async def _create_animated_gif(self, input_path, output_path, input_extension):
-        """Create animated GIF from any image with 3-second duration"""
+    async def _convert_gif_advanced(self, input_path, output_path, input_ext, output_format):
+        """Advanced GIF conversion with proper duration and quality"""
         try:
-            from PIL import Image, ImageSequence, ImageEnhance
+            from PIL import Image, ImageSequence
             
-            # Open the input image
-            with Image.open(input_path) as img:
-                frames = []
-                duration = 100  # 100ms per frame
-                total_frames = 30  # 30 frames for 3 seconds
-                
-                # Handle different input types
-                if input_extension.lower() == 'gif':
-                    # Extract frames from existing GIF
-                    for frame in ImageSequence.Iterator(img):
-                        frame = frame.convert('RGBA')
-                        frames.append(frame.copy())
-                    
-                    # If GIF has fewer frames, duplicate to reach 3 seconds
-                    if len(frames) < total_frames:
-                        original_frames = frames.copy()
-                        while len(frames) < total_frames:
-                            frames.extend(original_frames)
-                        frames = frames[:total_frames]
-                        
-                else:
-                    # Create animated GIF from static image
-                    base_img = img.convert('RGBA')
-                    
-                    # Create different variations for animation
-                    for i in range(total_frames):
-                        frame = base_img.copy()
-                        
-                        # Add subtle effects for different frames to create animation
-                        if i % 10 == 0:  # Every 10th frame, add a slight variation
-                            # Create a slightly enhanced version
-                            enhancer = ImageEnhance.Brightness(frame)
-                            frame = enhancer.enhance(1.02)  # Very subtle brightness change
-                        
-                        frames.append(frame)
-                
-                # Save as animated GIF
-                if len(frames) > 1:
-                    frames[0].save(
-                        output_path,
-                        format='GIF',
-                        save_all=True,
-                        append_images=frames[1:],
-                        duration=duration,
-                        loop=0,
-                        optimize=True
-                    )
-                    
-                    # Verify the GIF was created properly
-                    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                        logger.info(f"✅ Created animated GIF with {len(frames)} frames")
-                        return output_path
-                    else:
-                        raise Exception("GIF creation failed - no output file")
-                else:
-                    raise Exception("Not enough frames to create animated GIF")
-                    
-        except Exception as e:
-            logger.error(f"Animated GIF creation error: {e}")
-            # Fallback to simple conversion if animation fails
-            try:
+            if input_ext == 'gif' and output_format != 'gif':
+                # Convert GIF to other formats
                 with Image.open(input_path) as img:
-                    img.save(output_path, 'GIF')
-                    return output_path
-            except Exception as fallback_error:
-                raise Exception(f"GIF conversion failed: {str(fallback_error)}")
-    
-    async def _image_to_pdf(self, input_path, output_path):
-        """Convert image to PDF"""
-        try:
-            from PIL import Image
-            import img2pdf
+                    if output_format in ['jpg', 'jpeg']:
+                        # Convert first frame of GIF to JPEG
+                        for frame in ImageSequence.Iterator(img):
+                            if frame.mode != 'RGB':
+                                frame = frame.convert('RGB')
+                            frame.save(output_path, 'JPEG', quality=95)
+                            break
+                    else:
+                        # Convert first frame to other formats
+                        for frame in ImageSequence.Iterator(img):
+                            frame.save(output_path, format=output_format.upper())
+                            break
+                            
+            elif output_format == 'gif':
+                # Convert other formats to GIF with 3-second duration
+                if input_ext in ['jpg', 'jpeg', 'png', 'bmp']:
+                    with Image.open(input_path) as img:
+                        # Create a 3-second GIF by duplicating frames
+                        frames = []
+                        duration = 300  # 3 seconds in milliseconds (100ms per frame * 30 frames)
+                        
+                        # Convert to RGB if necessary
+                        if img.mode != 'RGB':
+                            img = img.convert('RGB')
+                        
+                        # Create multiple frames for 3-second duration
+                        for i in range(30):  # 30 frames for 3 seconds
+                            frames.append(img.copy())
+                        
+                        # Save as animated GIF
+                        frames[0].save(
+                            output_path,
+                            format='GIF',
+                            save_all=True,
+                            append_images=frames[1:],
+                            duration=100,  # 100ms per frame
+                            loop=0,
+                            optimize=True
+                        )
+                else:
+                    # For other formats, use FFmpeg for better GIF creation
+                    return await self._convert_to_gif_ffmpeg(input_path, output_path)
             
-            with Image.open(input_path) as img:
-                # Convert to RGB if necessary
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                
-                # Save as PDF
-                with open(output_path, "wb") as f:
-                    f.write(img2pdf.convert([input_path]))
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"GIF conversion error: {e}")
+            raise Exception(f"GIF conversion failed: {str(e)}")
+    
+    async def _convert_to_gif_ffmpeg(self, input_path, output_path):
+        """Convert video to high-quality GIF using FFmpeg"""
+        try:
+            cmd = [
+                'ffmpeg', '-i', input_path,
+                '-vf', 'fps=10,scale=640:-1:flags=lanczos',
+                '-t', '3',  # 3 seconds duration
+                '-y', output_path
+            ]
+            
+            await self._run_command(cmd, timeout=60)
             return output_path
         except Exception as e:
-            raise Exception(f"Image to PDF conversion failed: {str(e)}")
+            raise Exception(f"FFmpeg GIF conversion failed: {str(e)}")
+    
+    async def _image_to_pdf_advanced(self, input_path, output_path):
+        """Professional image to PDF conversion"""
+        try:
+            from PIL import Image
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter, A4
+            from reportlab.lib.utils import ImageReader
+            
+            with Image.open(input_path) as img:
+                # Use ReportLab for professional PDF creation
+                c = canvas.Canvas(output_path, pagesize=letter)
+                width, height = letter
+                
+                # Calculate scaling to fit image on page
+                img_width, img_height = img.size
+                scale_x = width / img_width
+                scale_y = height / img_height
+                scale = min(scale_x, scale_y) * 0.9  # 90% of page with margin
+                
+                # Calculate position to center image
+                x = (width - (img_width * scale)) / 2
+                y = (height - (img_height * scale)) / 2
+                
+                # Draw image
+                img_temp_path = input_path + '_temp.jpg'
+                img.convert('RGB').save(img_temp_path, 'JPEG', quality=90)
+                c.drawImage(img_temp_path, x, y, img_width * scale, img_height * scale)
+                c.save()
+                
+                # Cleanup temp file
+                if os.path.exists(img_temp_path):
+                    os.remove(img_temp_path)
+                    
+            return output_path
+        except Exception as e:
+            raise Exception(f"Professional image to PDF conversion failed: {str(e)}")
     
     async def _convert_audio(self, input_path, output_format, input_extension):
-        """Convert audio files using FFmpeg with smart compression"""
+        """Professional audio conversion with progress tracking"""
         try:
             # Check FFmpeg availability
             if not await self._check_ffmpeg_available():
@@ -211,56 +236,24 @@ class UniversalConverter:
             
             output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
             
-            # Get input file size to determine optimal settings
-            input_size = os.path.getsize(input_path)
-            input_size_mb = input_size / (1024 * 1024)
-            
-            logger.info(f"Audio conversion: {input_extension} -> {output_format}, Input size: {input_size_mb:.1f}MB")
-            
-            # Smart compression based on input size
-            if input_size_mb > 50:  # Large files
-                compression_level = 'high'
-            elif input_size_mb > 20:  # Medium files
-                compression_level = 'medium'
-            else:  # Small files
-                compression_level = 'low'
-            
+            # Professional audio conversion settings
             cmd = [
                 'ffmpeg', '-i', input_path,
                 '-y',  # Overwrite
                 '-loglevel', 'error',
                 '-hide_banner',
+                '-progress', 'pipe:1',  # Progress reporting
             ]
             
-            # Smart audio codec settings based on format and file size
+            # Professional audio codec settings
             if output_format == 'mp3':
-                if compression_level == 'high':
-                    cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '128k', '-compression_level', '0'])
-                elif compression_level == 'medium':
-                    cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '192k', '-compression_level', '0'])
-                else:
-                    cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '256k', '-q:a', '0'])
-                    
+                cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '320k', '-q:a', '0'])
             elif output_format == 'wav':
-                # For WAV, we can control size by using different sample rates and bit depths
-                if compression_level == 'high':
-                    cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '1', '-ar', '22050'])  # Mono, lower sample rate
-                elif compression_level == 'medium':
-                    cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '1', '-ar', '44100'])  # Mono, standard sample rate
-                else:
-                    cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '2', '-ar', '44100'])  # Stereo, standard
-                    
+                cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '2', '-ar', '44100'])
             elif output_format == 'aac':
-                if compression_level == 'high':
-                    cmd.extend(['-codec:a', 'aac', '-b:a', '128k', '-ac', '1'])
-                elif compression_level == 'medium':
-                    cmd.extend(['-codec:a', 'aac', '-b:a', '192k', '-ac', '2'])
-                else:
-                    cmd.extend(['-codec:a', 'aac', '-b:a', '256k', '-ac', '2'])
+                cmd.extend(['-codec:a', 'aac', '-b:a', '256k', '-ac', '2'])
             
             cmd.append(output_path)
-            
-            logger.info(f"Audio conversion command: {' '.join(cmd)}")
             
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -268,89 +261,28 @@ class UniversalConverter:
                 stderr=asyncio.subprocess.PIPE
             )
             
-            # Monitor progress with timeout
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)  # 5 minutes timeout
+            # Monitor progress
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=180)
             
             if process.returncode == 0 and os.path.exists(output_path):
-                # Verify output file is valid and check size
-                output_size = os.path.getsize(output_path)
-                output_size_mb = output_size / (1024 * 1024)
-                
-                logger.info(f"Audio conversion successful. Output size: {output_size_mb:.1f}MB")
-                
-                if output_size == 0:
+                # Verify output file is valid
+                file_size = os.path.getsize(output_path)
+                if file_size > 0:
+                    return output_path
+                else:
                     raise Exception("Conversion produced empty file")
-                
-                # If output is still too large, apply additional compression
-                if output_size > 45 * 1024 * 1024:  # Over 45MB
-                    logger.info(f"Output file too large ({output_size_mb:.1f}MB), applying additional compression")
-                    compressed_path = await self._compress_audio_file(output_path, output_format)
-                    if compressed_path:
-                        return compressed_path
-                
-                return output_path
             else:
                 error_msg = stderr.decode('utf-8', errors='ignore') if stderr else "Audio conversion failed"
-                logger.error(f"Audio conversion error: {error_msg}")
-                raise Exception(f"Audio conversion error: {error_msg}")
+                raise Exception(f"Professional audio conversion error: {error_msg}")
                 
         except asyncio.TimeoutError:
             raise Exception("Audio conversion timeout - file might be too large")
         except Exception as e:
-            logger.error(f"Audio conversion failed: {str(e)}")
-            raise Exception(f"Audio conversion failed: {str(e)}")
-
-    async def _compress_audio_file(self, input_path, output_format):
-        """Apply additional compression to audio files that are too large"""
-        try:
-            compressed_path = input_path.replace(f'.{output_format}', f'_compressed.{output_format}')
-            
-            logger.info(f"Applying additional compression to reduce file size")
-            
-            cmd = ['ffmpeg', '-i', input_path, '-y']
-            
-            if output_format == 'wav':
-                # Maximum compression for WAV: mono, low sample rate
-                cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '1', '-ar', '16000'])
-            elif output_format == 'mp3':
-                # Maximum compression for MP3: low bitrate
-                cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '96k'])
-            elif output_format == 'aac':
-                # Maximum compression for AAC: low bitrate, mono
-                cmd.extend(['-codec:a', 'aac', '-b:a', '96k', '-ac', '1'])
-            else:
-                cmd.extend(['-codec:a', 'copy'])  # Just copy if we can't compress further
-            
-            cmd.append(compressed_path)
-            
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
-            
-            if process.returncode == 0 and os.path.exists(compressed_path):
-                compressed_size = os.path.getsize(compressed_path)
-                compressed_size_mb = compressed_size / (1024 * 1024)
-                logger.info(f"Compression successful. New size: {compressed_size_mb:.1f}MB")
-                
-                # Replace original with compressed version
-                os.remove(input_path)
-                return compressed_path
-            else:
-                logger.warning("Additional compression failed, returning original file")
-                return input_path
-                
-        except Exception as e:
-            logger.error(f"Audio compression failed: {e}")
-            return input_path  # Return original if compression fails
+            raise Exception(f"Professional audio conversion failed: {str(e)}")
     
     async def _convert_video(self, input_path, output_format, input_extension):
-        """Convert video files using FFmpeg - ALL 12 COMBINATIONS SUPPORTED"""
+        """Professional video conversion"""
         try:
-            # Check FFmpeg availability
             if not await self._check_ffmpeg_available():
                 raise Exception("FFmpeg is required for video conversion but is not installed")
             
@@ -363,23 +295,35 @@ class UniversalConverter:
                 '-hide_banner',
             ]
             
-            # Video conversion settings for all formats
+            # Professional video conversion settings
             if output_format == 'mp4':
-                cmd.extend(['-c:v', 'libx264', '-c:a', 'aac', '-movflags', '+faststart'])
+                cmd.extend([
+                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+                    '-c:a', 'aac', '-b:a', '192k',
+                    '-movflags', '+faststart'
+                ])
             elif output_format == 'avi':
-                cmd.extend(['-c:v', 'mpeg4', '-c:a', 'mp3'])
+                cmd.extend([
+                    '-c:v', 'mpeg4', '-qscale:v', '3',
+                    '-c:a', 'mp3', '-b:a', '192k'
+                ])
             elif output_format == 'mov':
-                cmd.extend(['-c:v', 'libx264', '-c:a', 'aac'])
+                cmd.extend([
+                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+                    '-c:a', 'aac', '-b:a', '192k'
+                ])
             elif output_format == 'mkv':
-                cmd.extend(['-c:v', 'libx264', '-c:a', 'aac'])
+                cmd.extend([
+                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+                    '-c:a', 'aac', '-b:a', '192k'
+                ])
             elif output_format == 'gif':
-                # Convert to GIF with 3-second duration
+                # High-quality GIF with 3-second duration
                 cmd = [
                     'ffmpeg', '-i', input_path,
-                    '-y',
                     '-t', '3',  # 3 seconds
-                    '-vf', 'fps=10,scale=320:-1:flags=lanczos',
-                    output_path
+                    '-vf', 'fps=12,scale=640:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse',
+                    '-y', output_path
                 ]
             
             if output_format != 'gif':  # Already set for GIF
@@ -397,72 +341,61 @@ class UniversalConverter:
                 return output_path
             else:
                 error_msg = stderr.decode('utf-8', errors='ignore') if stderr else "Video conversion failed"
-                raise Exception(f"Video conversion error: {error_msg}")
+                raise Exception(f"Professional video conversion error: {error_msg}")
                 
         except Exception as e:
-            raise Exception(f"Video conversion failed: {str(e)}")
+            raise Exception(f"Professional video conversion failed: {str(e)}")
     
     async def _convert_document(self, input_path, output_format, input_extension):
-        """Convert document files - ALL RELIABLE COMBINATIONS SUPPORTED"""
+        """Professional document conversion with high accuracy"""
         try:
             output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
+            
+            logger.info(f"Converting document: {input_extension} -> {output_format}")
             
             # PDF conversions
             if input_extension == 'pdf':
                 if output_format == 'txt':
-                    return await self._pdf_to_text(input_path, output_path)
+                    return await self._pdf_to_text_advanced(input_path, output_path)
                 elif output_format in ['jpg', 'jpeg', 'png']:
-                    return await self._pdf_to_image(input_path, output_path, output_format)
+                    return await self._pdf_to_images_advanced(input_path, output_path, output_format)
                 elif output_format == 'docx':
-                    return await self._pdf_to_docx(input_path, output_path)
+                    return await self._pdf_to_docx_advanced(input_path, output_path)
                 elif output_format == 'xlsx':
-                    return await self._pdf_to_excel(input_path, output_path)
+                    return await self._pdf_to_excel_advanced(input_path, output_path)
             
             # Text conversions
             elif input_extension == 'txt':
                 if output_format == 'pdf':
-                    return await self._text_to_pdf(input_path, output_path)
+                    return await self._text_to_pdf_advanced(input_path, output_path)
                 elif output_format == 'docx':
-                    return await self._text_to_docx(input_path, output_path)
+                    return await self._text_to_docx_advanced(input_path, output_path)
             
             # Word document conversions
             elif input_extension == 'docx':
                 if output_format == 'pdf':
-                    return await self._docx_to_pdf(input_path, output_path)
+                    return await self._docx_to_pdf_advanced(input_path, output_path)
                 elif output_format == 'txt':
-                    return await self._docx_to_text(input_path, output_path)
+                    return await self._docx_to_text_advanced(input_path, output_path)
             
             # Excel conversions
             elif input_extension == 'xlsx':
                 if output_format == 'pdf':
-                    return await self._excel_to_pdf(input_path, output_path)
+                    return await self._excel_to_pdf_advanced(input_path, output_path)
             
             # ODT conversions
             elif input_extension == 'odt':
                 if output_format == 'pdf':
-                    return await self._odt_to_pdf(input_path, output_path)
+                    return await self._odt_to_pdf_advanced(input_path, output_path)
             
             raise Exception(f"Document conversion from {input_extension} to {output_format} not implemented")
             
         except Exception as e:
-            raise Exception(f"Document conversion failed: {str(e)}")
+            logger.error(f"Document conversion error: {e}")
+            raise Exception(f"Professional document conversion failed: {str(e)}")
     
-    async def _convert_presentation(self, input_path, output_format, input_extension):
-        """Convert presentation files"""
-        try:
-            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
-            
-            if output_format == 'pdf':
-                if input_extension in ['pptx', 'ppt']:
-                    return await self._ppt_to_pdf(input_path, output_path)
-            
-            raise Exception(f"Presentation conversion from {input_extension} to {output_format} not implemented")
-            
-        except Exception as e:
-            raise Exception(f"Presentation conversion failed: {str(e)}")
-    
-    async def _pdf_to_text(self, input_path, output_path):
-        """Convert PDF to text"""
+    async def _pdf_to_text_advanced(self, input_path, output_path):
+        """Advanced PDF to text conversion with formatting preservation"""
         try:
             import fitz  # PyMuPDF
             
@@ -471,163 +404,236 @@ class UniversalConverter:
             
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
-                text = page.get_text()
-                text_content += text + "\n\n"
+                text = page.get_text("text")  # Use "text" for better formatting
+                if text.strip():
+                    text_content += f"--- Page {page_num + 1} ---\n{text}\n\n"
             
             doc.close()
             
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(text_content)
-            
-            return output_path
-        except Exception as e:
-            raise Exception(f"PDF to text conversion failed: {str(e)}")
-    
-    async def _pdf_to_image(self, input_path, output_path, output_format):
-        """Convert PDF to image"""
-        try:
-            from pdf2image import convert_from_path
-            
-            images = convert_from_path(input_path, dpi=150)
-            if images:
-                # Save first page only
-                images[0].save(output_path, format=output_format.upper(), quality=95)
+            if text_content.strip():
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(text_content)
                 return output_path
             else:
-                raise Exception("No pages found in PDF")
+                raise Exception("No text content found in PDF")
+                
         except Exception as e:
-            raise Exception(f"PDF to image conversion failed: {str(e)}")
+            raise Exception(f"Advanced PDF to text conversion failed: {str(e)}")
     
-    async def _pdf_to_docx(self, input_path, output_path):
-        """Convert PDF to DOCX"""
+    async def _pdf_to_images_advanced(self, input_path, output_path, output_format):
+        """Convert PDF to high-quality images (all pages)"""
+        try:
+            from pdf2image import convert_from_path
+            import fitz
+            
+            # First, check if PDF has multiple pages
+            doc = fitz.open(input_path)
+            page_count = len(doc)
+            doc.close()
+            
+            if page_count == 1:
+                # Single page - convert directly
+                images = convert_from_path(input_path, dpi=300, first_page=1, last_page=1)
+                if images:
+                    images[0].save(output_path, format=output_format.upper(), quality=95)
+                    return output_path
+            else:
+                # Multiple pages - create a ZIP file with all pages
+                import zipfile
+                zip_path = output_path.rsplit('.', 1)[0] + '_all_pages.zip'
+                
+                images = convert_from_path(input_path, dpi=300)
+                with zipfile.ZipFile(zip_path, 'w') as zipf:
+                    for i, image in enumerate(images):
+                        img_path = f"{output_path.rsplit('.', 1)[0]}_page_{i+1}.{output_format}"
+                        image.save(img_path, format=output_format.upper(), quality=95)
+                        zipf.write(img_path, f"page_{i+1}.{output_format}")
+                        os.remove(img_path)  # Cleanup individual files
+                
+                return zip_path
+                
+            raise Exception("No pages found in PDF")
+        except Exception as e:
+            raise Exception(f"Advanced PDF to image conversion failed: {str(e)}")
+    
+    async def _pdf_to_docx_advanced(self, input_path, output_path):
+        """Advanced PDF to DOCX conversion"""
         try:
             from pdf2docx import Converter
             
             cv = Converter(input_path)
-            cv.convert(output_path)
+            cv.convert(output_path, start=0, end=None)
             cv.close()
             
-            return output_path
+            # Verify conversion was successful
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return output_path
+            else:
+                raise Exception("PDF to DOCX conversion produced empty file")
+                
         except Exception as e:
-            raise Exception(f"PDF to DOCX conversion failed: {str(e)}")
+            raise Exception(f"Advanced PDF to DOCX conversion failed: {str(e)}")
     
-    async def _pdf_to_excel(self, input_path, output_path):
-        """Convert PDF to Excel (basic text extraction)"""
+    async def _pdf_to_excel_advanced(self, input_path, output_path):
+        """Advanced PDF to Excel conversion with table detection"""
         try:
             import fitz
             import pandas as pd
+            import pdfplumber
             
-            doc = fitz.open(input_path)
-            text_content = []
+            all_data = []
             
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                text = page.get_text()
-                if text.strip():
-                    text_content.append([f"Page {page_num + 1}", text[:1000]])  # Limit text length
+            # Try pdfplumber first for better table detection
+            with pdfplumber.open(input_path) as pdf:
+                for page_num, page in enumerate(pdf.pages):
+                    tables = page.extract_tables()
+                    for table_num, table in enumerate(tables):
+                        if table and len(table) > 1:  # At least header and one row
+                            df = pd.DataFrame(table[1:], columns=table[0])
+                            all_data.append((f"Page_{page_num+1}_Table_{table_num+1}", df))
             
-            doc.close()
+            # If no tables found, extract text
+            if not all_data:
+                doc = fitz.open(input_path)
+                for page_num in range(len(doc)):
+                    page = doc.load_page(page_num)
+                    text = page.get_text()
+                    if text.strip():
+                        # Create a simple DataFrame from text
+                        lines = [line.strip() for line in text.split('\n') if line.strip()]
+                        df = pd.DataFrame(lines, columns=[f"Content_Page_{page_num+1}"])
+                        all_data.append((f"Page_{page_num+1}", df))
+                doc.close()
             
-            if text_content:
-                df = pd.DataFrame(text_content, columns=['Page', 'Content'])
-                df.to_excel(output_path, index=False)
+            if all_data:
+                # Save all data to Excel with multiple sheets
+                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                    for sheet_name, df in all_data:
+                        # Truncate sheet name if too long
+                        sheet_name = sheet_name[:31]
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+                
                 return output_path
             else:
-                raise Exception("No text content found in PDF")
+                raise Exception("No extractable content found in PDF")
+                
         except Exception as e:
-            raise Exception(f"PDF to Excel conversion failed: {str(e)}")
+            raise Exception(f"Advanced PDF to Excel conversion failed: {str(e)}")
     
-    async def _text_to_pdf(self, input_path, output_path):
-        """Convert text to PDF"""
+    async def _text_to_pdf_advanced(self, input_path, output_path):
+        """Advanced text to PDF conversion with professional formatting"""
         try:
             from reportlab.pdfgen import canvas
-            from reportlab.lib.pagesizes import letter
+            from reportlab.lib.pagesizes import letter, A4
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+            from reportlab.lib.units import inch
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
             
+            # Read text content
             with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
                 text_content = f.read()
             
-            c = canvas.Canvas(output_path, pagesize=letter)
-            width, height = letter
+            # Create professional PDF
+            doc = SimpleDocTemplate(
+                output_path,
+                pagesize=letter,
+                rightMargin=72,
+                leftMargin=72,
+                topMargin=72,
+                bottomMargin=18
+            )
             
-            c.setFont("Helvetica", 12)
-            y_position = height - 40
-            line_height = 14
+            styles = getSampleStyleSheet()
+            story = []
             
-            # Simple text wrapping
-            lines = text_content.split('\n')
+            # Custom style for better readability
+            custom_style = ParagraphStyle(
+                'Custom',
+                parent=styles['Normal'],
+                fontSize=12,
+                leading=14,
+                spaceAfter=12
+            )
             
-            # Add lines to PDF
-            for line in lines[:100]:  # Limit to 100 lines
-                if y_position < 40:
-                    c.showPage()
-                    y_position = height - 40
-                    c.setFont("Helvetica", 12)
+            # Split text into paragraphs and add to story
+            paragraphs = text_content.split('\n')
+            for para in paragraphs:
+                if para.strip():
+                    story.append(Paragraph(para.strip(), custom_style))
+                    story.append(Spacer(1, 12))
+            
+            if story:
+                doc.build(story)
+                return output_path
+            else:
+                raise Exception("No content to convert")
                 
-                if line.strip():
-                    c.drawString(50, y_position, line[:80])
-                y_position -= line_height
-            
-            c.save()
-            return output_path
         except Exception as e:
-            raise Exception(f"Text to PDF conversion failed: {str(e)}")
+            raise Exception(f"Advanced text to PDF conversion failed: {str(e)}")
     
-    async def _text_to_docx(self, input_path, output_path):
-        """Convert text to DOCX"""
+    async def _text_to_docx_advanced(self, input_path, output_path):
+        """Advanced text to DOCX conversion"""
         try:
             from docx import Document
+            from docx.shared import Inches
             
             with open(input_path, 'r', encoding='utf-8') as f:
                 text_content = f.read()
             
             doc = Document()
-            doc.add_paragraph(text_content)
-            doc.save(output_path)
             
+            # Add professional styling
+            style = doc.styles['Normal']
+            style.font.name = 'Arial'
+            style.font.size = docx.shared.Pt(11)
+            
+            # Add content with proper paragraph formatting
+            paragraphs = text_content.split('\n')
+            for para in paragraphs:
+                if para.strip():
+                    p = doc.add_paragraph(para.strip())
+                    p.paragraph_format.space_after = docx.shared.Pt(6)
+            
+            doc.save(output_path)
             return output_path
+            
         except Exception as e:
-            raise Exception(f"Text to DOCX conversion failed: {str(e)}")
+            raise Exception(f"Advanced text to DOCX conversion failed: {str(e)}")
     
-    async def _docx_to_pdf(self, input_path, output_path):
-        """Convert DOCX to PDF"""
+    async def _docx_to_pdf_advanced(self, input_path, output_path):
+        """Advanced DOCX to PDF conversion using LibreOffice"""
         try:
-            # Try docx2pdf first
-            try:
-                from docx2pdf import convert
-                convert(input_path, output_path)
-                return output_path
-            except:
-                # Fallback to manual conversion
-                from docx import Document
-                from reportlab.pdfgen import canvas
-                from reportlab.lib.pagesizes import letter
+            # Use LibreOffice for highest quality conversion
+            cmd = [
+                'libreoffice', '--headless', '--convert-to', 'pdf:writer_pdf_Export',
+                '--outdir', os.path.dirname(output_path), input_path
+            ]
+            
+            await self._run_command(cmd, timeout=120)
+            
+            # Find the converted file
+            base_name = os.path.splitext(os.path.basename(input_path))[0]
+            possible_path = os.path.join(os.path.dirname(output_path), base_name + '.pdf')
+            
+            if os.path.exists(possible_path):
+                if possible_path != output_path:
+                    os.rename(possible_path, output_path)
                 
-                doc = Document(input_path)
-                c = canvas.Canvas(output_path, pagesize=letter)
-                width, height = letter
-                
-                c.setFont("Helvetica", 12)
-                y_position = height - 40
-                line_height = 14
-                
-                for paragraph in doc.paragraphs:
-                    if paragraph.text.strip():
-                        if y_position < 40:
-                            c.showPage()
-                            y_position = height - 40
-                            c.setFont("Helvetica", 12)
-                        
-                        c.drawString(50, y_position, paragraph.text[:80])
-                        y_position -= line_height
-                
-                c.save()
-                return output_path
+                # Verify the PDF is valid
+                if os.path.getsize(output_path) > 0:
+                    return output_path
+                else:
+                    raise Exception("Conversion produced empty PDF")
+            else:
+                raise Exception("DOCX to PDF conversion failed - output not found")
                 
         except Exception as e:
-            raise Exception(f"DOCX to PDF conversion failed: {str(e)}")
+            raise Exception(f"Advanced DOCX to PDF conversion failed: {str(e)}")
     
-    async def _docx_to_text(self, input_path, output_path):
-        """Convert DOCX to text"""
+    async def _docx_to_text_advanced(self, input_path, output_path):
+        """Advanced DOCX to text conversion with formatting"""
         try:
             from docx import Document
             
@@ -638,64 +644,60 @@ class UniversalConverter:
                 if paragraph.text.strip():
                     text_content.append(paragraph.text)
             
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(text_content))
+            # Add table content
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = []
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            row_text.append(cell.text.strip())
+                    if row_text:
+                        text_content.append(' | '.join(row_text))
             
-            return output_path
+            if text_content:
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write('\n'.join(text_content))
+                return output_path
+            else:
+                raise Exception("No content found in DOCX file")
+                
         except Exception as e:
-            raise Exception(f"DOCX to text conversion failed: {str(e)}")
+            raise Exception(f"Advanced DOCX to text conversion failed: {str(e)}")
     
-    async def _excel_to_pdf(self, input_path, output_path):
-        """Convert Excel to PDF"""
+    async def _excel_to_pdf_advanced(self, input_path, output_path):
+        """Advanced Excel to PDF conversion"""
         try:
-            import pandas as pd
-            from reportlab.pdfgen import canvas
-            from reportlab.lib.pagesizes import letter
-            
-            df = pd.read_excel(input_path)
-            
-            c = canvas.Canvas(output_path, pagesize=letter)
-            width, height = letter
-            
-            c.setFont("Helvetica-Bold", 16)
-            c.drawString(50, height - 50, f"Data from: {os.path.basename(input_path)}")
-            
-            c.setFont("Helvetica", 10)
-            y_position = height - 80
-            
-            # Add headers
-            headers = df.columns.tolist()
-            for i, header in enumerate(headers):
-                c.drawString(50 + i * 100, y_position, str(header)[:15])
-            
-            y_position -= 20
-            
-            # Add data (first 20 rows)
-            for _, row in df.head(20).iterrows():
-                for i, value in enumerate(row):
-                    c.drawString(50 + i * 100, y_position, str(value)[:15])
-                y_position -= 15
-                if y_position < 50:
-                    c.showPage()
-                    y_position = height - 50
-            
-            c.save()
-            return output_path
-        except Exception as e:
-            raise Exception(f"Excel to PDF conversion failed: {str(e)}")
-    
-    async def _odt_to_pdf(self, input_path, output_path):
-        """Convert ODT to PDF"""
-        try:
-            # Use LibreOffice for ODT to PDF conversion
+            # Use LibreOffice for best Excel to PDF conversion
             cmd = [
-                'libreoffice', '--headless', '--convert-to', 'pdf',
+                'libreoffice', '--headless', '--convert-to', 'pdf:calc_pdf_Export',
                 '--outdir', os.path.dirname(output_path), input_path
             ]
             
-            await self._run_command(cmd)
+            await self._run_command(cmd, timeout=120)
             
-            # Find the converted file
+            base_name = os.path.splitext(os.path.basename(input_path))[0]
+            possible_path = os.path.join(os.path.dirname(output_path), base_name + '.pdf')
+            
+            if os.path.exists(possible_path):
+                if possible_path != output_path:
+                    os.rename(possible_path, output_path)
+                return output_path
+            else:
+                raise Exception("Excel to PDF conversion failed")
+                
+        except Exception as e:
+            raise Exception(f"Advanced Excel to PDF conversion failed: {str(e)}")
+    
+    async def _odt_to_pdf_advanced(self, input_path, output_path):
+        """Advanced ODT to PDF conversion"""
+        try:
+            cmd = [
+                'libreoffice', '--headless', '--convert-to', 'pdf:writer_pdf_Export',
+                '--outdir', os.path.dirname(output_path), input_path
+            ]
+            
+            await self._run_command(cmd, timeout=120)
+            
             base_name = os.path.splitext(os.path.basename(input_path))[0]
             possible_path = os.path.join(os.path.dirname(output_path), base_name + '.pdf')
             
@@ -707,20 +709,32 @@ class UniversalConverter:
                 raise Exception("ODT to PDF conversion failed")
                 
         except Exception as e:
-            raise Exception(f"ODT to PDF conversion failed: {str(e)}")
+            raise Exception(f"Advanced ODT to PDF conversion failed: {str(e)}")
     
-    async def _ppt_to_pdf(self, input_path, output_path):
-        """Convert PowerPoint to PDF"""
+    async def _convert_presentation(self, input_path, output_format, input_extension):
+        """Professional presentation conversion"""
         try:
-            # Use LibreOffice for PPT to PDF conversion
+            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
+            
+            if output_format == 'pdf':
+                if input_extension in ['pptx', 'ppt']:
+                    return await self._ppt_to_pdf_advanced(input_path, output_path)
+            
+            raise Exception(f"Presentation conversion from {input_extension} to {output_format} not implemented")
+            
+        except Exception as e:
+            raise Exception(f"Professional presentation conversion failed: {str(e)}")
+    
+    async def _ppt_to_pdf_advanced(self, input_path, output_path):
+        """Advanced PowerPoint to PDF conversion"""
+        try:
             cmd = [
-                'libreoffice', '--headless', '--convert-to', 'pdf',
+                'libreoffice', '--headless', '--convert-to', 'pdf:impress_pdf_Export',
                 '--outdir', os.path.dirname(output_path), input_path
             ]
             
-            await self._run_command(cmd)
+            await self._run_command(cmd, timeout=180)
             
-            # Find the converted file
             base_name = os.path.splitext(os.path.basename(input_path))[0]
             possible_path = os.path.join(os.path.dirname(output_path), base_name + '.pdf')
             
@@ -732,10 +746,10 @@ class UniversalConverter:
                 raise Exception("PowerPoint to PDF conversion failed")
                 
         except Exception as e:
-            raise Exception(f"PowerPoint to PDF conversion failed: {str(e)}")
+            raise Exception(f"Advanced PowerPoint to PDF conversion failed: {str(e)}")
     
-    async def _run_command(self, cmd):
-        """Run system command"""
+    async def _run_command(self, cmd, timeout=60):
+        """Run system command with timeout"""
         try:
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -743,7 +757,7 @@ class UniversalConverter:
                 stderr=asyncio.subprocess.PIPE
             )
             
-            stdout, stderr = await process.communicate()
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
             
             if process.returncode != 0:
                 error_msg = stderr.decode() if stderr else "Command failed"
@@ -751,6 +765,8 @@ class UniversalConverter:
             
             return stdout.decode() if stdout else ""
             
+        except asyncio.TimeoutError:
+            raise Exception(f"Command timeout after {timeout} seconds")
         except Exception as e:
             raise Exception(f"Command execution failed: {str(e)}")
 
