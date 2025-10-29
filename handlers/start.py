@@ -45,7 +45,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.add_user(user_id, user.username, user.first_name, user.last_name)
     
     welcome_text = f"""
-👋 Welcome *{user.first_name}* to the *World-Class File Converter Bot*! 🚀
+👋 Welcome *{user.first_name}* to the *World-Class File Converter Bot*!
 
 *Professional Features:*
 • 🎯 High-quality professional conversions
@@ -97,7 +97,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Or use category menus for specific conversions
 
 ⚡ *Tips:*
-• Max file size: 50MB
 • Multiple files processed simultaneously
 • Conversion history saved
 • Queue system for fair processing

@@ -1,424 +1,758 @@
-import asyncio
 import os
-from datetime import datetime
-from database import db
-from config import Config
+import asyncio
+import subprocess
+import tempfile
+from pathlib import Path
 import logging
+from config import Config
 
 logger = logging.getLogger(__name__)
 
-class QueueManager:
+class UniversalConverter:
     def __init__(self):
-        self.processing = False
-        self.current_tasks = []
+        self.supported_formats = {}
+        for category, formats in Config.SUPPORTED_FORMATS.items():
+            for fmt in formats:
+                self.supported_formats[fmt] = category
     
-    async def add_to_queue(self, job_data):
-        """Add a job to the processing queue"""
+    async def _check_ffmpeg_available(self):
+        """Check if FFmpeg is available"""
         try:
-            # Check if user is banned before adding to queue
-            user = db.get_user_by_id(job_data['user_id'])
-            if user and user['is_banned']:
-                raise Exception("User account is banned")
-            
-            # Calculate queue position
-            queue_position = db.get_queued_jobs_count() + 1
-            
-            # Add job to database
-            job_id = db.add_conversion_job(
-                job_data['user_id'],
-                job_data['input_path'],
-                job_data['output_format'],
-                job_data['input_type'],
-                job_data['file_size'],
-                queue_position
+            process = await asyncio.create_subprocess_exec(
+                'ffmpeg', '-version',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            
-            job_data['job_id'] = job_id
-            job_data['queue_position'] = queue_position
-            
-            # Add to async queue
-            await Config.processing_queue.put(job_data)
-            
-            logger.info(f"📥 Job {job_id} added to queue at position {queue_position}")
-            
-            return job_id, queue_position
-            
-        except Exception as e:
-            logger.error(f"Error adding job to queue: {e}")
-            raise
-    
-    async def process_queue(self):
-        """Process the conversion queue"""
-        if self.processing:
-            logger.info("Queue processor already running")
-            return
-        
-        self.processing = True
-        logger.info("🚀 Professional queue processor started")
-        
-        try:
-            while self.processing:
-                # Check if we can process more jobs
-                async with Config.job_lock:
-                    if Config.active_jobs >= Config.MAX_CONCURRENT_JOBS:
-                        await asyncio.sleep(1)
-                        continue
-                
-                # Get next job from queue
-                try:
-                    job_data = await asyncio.wait_for(Config.processing_queue.get(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    continue
-                
-                # Check if user is still not banned before processing
-                user = db.get_user_by_id(job_data['user_id'])
-                if user and user['is_banned']:
-                    logger.info(f"Job {job_data['job_id']} cancelled - user {job_data['user_id']} is banned")
-                    db.update_conversion_job(job_data['job_id'], status='failed', error_message='User account banned')
-                    
-                    await self.send_ban_notification(job_data['user_id'], job_data['job_id'])
-                    await self.cleanup_files(job_data.get('input_path'))
-                    continue
-                
-                # Update job status to processing
-                db.update_conversion_job(job_data['job_id'], status='processing', progress=10)
-                
-                # Start processing job
-                async with Config.job_lock:
-                    Config.active_jobs += 1
-                
-                logger.info(f"🔄 Processing job {job_data['job_id']}, active jobs: {Config.active_jobs}")
-                
-                # Process the job in background
-                task = asyncio.create_task(self.process_job(job_data))
-                self.current_tasks.append(task)
-                task.add_done_callback(lambda t: self.current_tasks.remove(t))
-                
-        except Exception as e:
-            logger.error(f"Queue processor error: {e}")
-        finally:
-            self.processing = False
-            logger.info("🛑 Queue processor stopped")
-    
-    async def process_job(self, job_data):
-        """Process a single conversion job with professional quality"""
-        try:
-            logger.info(f"Starting professional conversion for job {job_data['job_id']}")
-            
-            # Double-check if user is still not banned
-            user = db.get_user_by_id(job_data['user_id'])
-            if user and user['is_banned']:
-                raise Exception("User account banned during processing")
-            
-            # Send processing started message
-            await self.send_status_update(
-                job_data['user_id'],
-                job_data['job_id'],
-                "🔄 Professional conversion started...",
-                20,
-                f"Converting {job_data['input_type'].upper()} to {job_data['output_format'].upper()}"
-            )
-            
-            # Get appropriate timeout based on file category
-            input_category = self._get_file_category(job_data['input_type'])
-            timeout = Config.get_conversion_timeout(input_category)
-            
-            # Perform conversion with professional settings
-            try:
-                output_path = await asyncio.wait_for(
-                    self.perform_professional_conversion(job_data),
-                    timeout=timeout
-                )
-            except asyncio.TimeoutError:
-                raise Exception(f"Professional conversion timeout after {timeout} seconds")
-            
-            if output_path and os.path.exists(output_path):
-                # Verify output quality
-                output_size = os.path.getsize(output_path)
-                if output_size == 0:
-                    raise Exception("Professional conversion produced empty file")
-                
-                # Update job status
-                db.update_conversion_job(
-                    job_data['job_id'],
-                    status='completed',
-                    progress=100,
-                    output_file_path=output_path
-                )
-                
-                # Send completion message
-                await self.send_status_update(
-                    job_data['user_id'],
-                    job_data['job_id'],
-                    "✅ Professional conversion completed!",
-                    100,
-                    f"High-quality {job_data['output_format'].upper()} file ready",
-                    output_path
-                )
-                
-                # Add to history
-                self.add_to_history(job_data, output_path)
-                
-                logger.info(f"✅ Job {job_data['job_id']} completed with professional quality")
-                
-            else:
-                raise Exception("Professional conversion produced no output")
-                
-        except Exception as e:
-            logger.error(f"Job {job_data['job_id']} professional processing error: {e}")
-            db.update_conversion_job(
-                job_data['job_id'],
-                status='failed',
-                error_message=str(e)
-            )
-            
-            await self.send_status_update(
-                job_data['user_id'],
-                job_data['job_id'],
-                f"❌ Professional conversion failed: {str(e)}",
-                0
-            )
-        
-        finally:
-            # Cleanup and decrement active jobs counter
-            async with Config.job_lock:
-                Config.active_jobs = max(0, Config.active_jobs - 1)
-            
-            # Cleanup temporary files
-            await self.cleanup_files(job_data.get('input_path'))
-    
-    def _get_file_category(self, file_extension):
-        """Get file category from extension"""
-        file_extension = file_extension.lower()
-        
-        for category, extensions in Config.SUPPORTED_FORMATS.items():
-            if file_extension in extensions:
-                return category
-        return 'document'  # Default category
-    
-    async def perform_professional_conversion(self, job_data):
-        """Professional conversion using enhanced converter"""
-        conversion_type = job_data['conversion_type']
-        input_path = job_data['input_path']
-        output_format = job_data['output_format']
-        input_extension = job_data['input_type'].lower()
-        
-        # Update progress
-        await self.send_status_update(
-            job_data['user_id'],
-            job_data['job_id'],
-            "🎯 Processing with professional settings...",
-            50,
-            f"Optimizing {input_extension.upper()} to {output_format.upper()}"
-        )
-        
-        try:
-            # Use the enhanced universal converter
-            from converters.universal_converter import universal_converter
-            output_path = await universal_converter.convert_file(input_path, output_format, input_extension)
-            
-            # Verify the output file is valid
-            if not output_path or not os.path.exists(output_path):
-                raise Exception("Conversion failed - no output file created")
-                
-            output_size = os.path.getsize(output_path)
-            if output_size == 0:
-                raise Exception("Conversion produced empty file")
-                
-            logger.info(f"Conversion successful: {output_path} ({output_size} bytes)")
-            return output_path
-                
-        except Exception as e:
-            logger.error(f"Professional conversion error for job {job_data['job_id']}: {e}")
-            raise
-    
-    async def send_status_update(self, user_id, job_id, message, progress, details="", file_path=None):
-        """Send professional status update to user with proper large file handling"""
-        try:
-            from telegram import Bot
-            from utils.file_utils import format_file_size
-            
-            bot = Bot(Config.BOT_TOKEN)
-            
-            # Get queue info
-            queued_jobs = db.get_user_queued_jobs(user_id)
-            current_job = next((job for job in queued_jobs if job['id'] == job_id), None)
-            
-            status_message = f"🎯 *Professional File Converter*\n\n"
-            status_message += f"{message}\n"
-            
-            if details:
-                status_message += f"📝 *Details:* {details}\n"
-            
-            status_message += f"📊 *Progress:* {progress}%\n"
-            
-            if current_job and current_job['queue_position'] > 1:
-                status_message += f"📋 *Queue Position:* {current_job['queue_position']}\n"
-            
-            if progress == 100 and file_path:
-                # Get file info
-                file_size = os.path.getsize(file_path)
-                file_ext = file_path.split('.')[-1].upper()
-                formatted_size = format_file_size(file_size)
-                file_size_mb = file_size // (1024 * 1024)
-                
-                caption = f"✅ *Professional Conversion Complete!*\n\n"
-                caption += f"📁 *Format:* {file_ext}\n"
-                caption += f"📊 *Size:* {formatted_size}\n"
-                caption += f"🎯 *Quality:* Professional Grade\n"
-                
-                try:
-                    # For audio files, always try audio method first for better user experience
-                    if file_ext in ['MP3', 'WAV', 'AAC', 'OGG']:
-                        if file_size <= 50 * 1024 * 1024:  # 50MB limit for audio
-                            await bot.send_audio(
-                                chat_id=user_id,
-                                audio=open(file_path, 'rb'),
-                                caption=caption,
-                                parse_mode='Markdown'
-                            )
-                            return
-                        else:
-                            # Large audio file, send as document with explanation
-                            caption += f"\n📦 *Large audio file - sent as document*\n"
-                            caption += f"💡 *Tip:* For better audio quality, try converting to MP3 with lower bitrate"
-                    
-                    # For very large files (>500MB), always use document method
-                    if file_size > 500 * 1024 * 1024:
-                        caption += f"\n📦 *Large file - sent as document*"
-                        await bot.send_document(
-                            chat_id=user_id,
-                            document=open(file_path, 'rb'),
-                            caption=caption,
-                            parse_mode='Markdown'
-                        )
-                    elif file_ext in ['JPG', 'JPEG', 'PNG', 'WEBP', 'BMP'] and file_size < 10 * 1024 * 1024:
-                        # Small images as photos
-                        await bot.send_photo(
-                            chat_id=user_id,
-                            photo=open(file_path, 'rb'),
-                            caption=caption,
-                            parse_mode='Markdown'
-                        )
-                    elif file_ext == 'GIF':
-                        # GIFs as documents to preserve animation
-                        await bot.send_document(
-                            chat_id=user_id,
-                            document=open(file_path, 'rb'),
-                            caption=caption,
-                            parse_mode='Markdown'
-                        )
-                    elif file_ext in ['MP4', 'AVI', 'MOV', 'MKV'] and file_size < 50 * 1024 * 1024:
-                        # Video files under 50MB
-                        await bot.send_video(
-                            chat_id=user_id,
-                            video=open(file_path, 'rb'),
-                            caption=caption,
-                            parse_mode='Markdown'
-                        )
-                    else:
-                        # Everything else as documents (supports up to 2GB)
-                        await bot.send_document(
-                            chat_id=user_id,
-                            document=open(file_path, 'rb'),
-                            caption=caption,
-                            parse_mode='Markdown'
-                        )
-                        
-                except Exception as file_error:
-                    logger.error(f"Error sending file with specific method: {file_error}")
-                    # Universal fallback - document method supports largest files
-                    try:
-                        await bot.send_document(
-                            chat_id=user_id,
-                            document=open(file_path, 'rb'),
-                            caption=caption + "\n\n📦 *Sent as document for maximum compatibility*",
-                            parse_mode='Markdown'
-                        )
-                    except Exception as doc_error:
-                        logger.error(f"Document fallback failed: {doc_error}")
-                        # If even document fails, the file might be corrupted or too large
-                        # Try to get more info about the file
-                        file_info = f"Format: {file_ext}, Size: {formatted_size}"
-                        if not os.path.exists(file_path):
-                            file_info += ", File not found"
-                        elif os.path.getsize(file_path) == 0:
-                            file_info += ", File is empty"
-                        
-                        await bot.send_message(
-                            chat_id=user_id,
-                            text=f"✅ *Conversion Complete!*\n\n"
-                                 f"📁 *File:* {os.path.basename(file_path)}\n"
-                                 f"{file_info}\n\n"
-                                 f"⚠️ *Could not send file via Telegram*\n"
-                                 f"The file was converted successfully but couldn't be delivered.\n\n"
-                                 f"💡 *Possible solutions:*\n"
-                                 f"• Try converting to a different format\n"
-                                 f"• The file might be too large for Telegram\n"
-                                 f"• Try a smaller input file\n"
-                                 f"• Contact support if this persists",
-                            parse_mode='Markdown'
-                        )
-            else:
-                # Send status update without file
-                await bot.send_message(
-                    chat_id=user_id,
-                    text=status_message,
-                    parse_mode='Markdown'
-                )
-                
-        except Exception as e:
-            logger.error(f"Error sending professional status update to user {user_id}: {e}")
-    
-    async def send_ban_notification(self, user_id, job_id):
-        """Send notification that job was cancelled due to ban"""
-        try:
-            from telegram import Bot
-            bot = Bot(Config.BOT_TOKEN)
-            
-            await bot.send_message(
-                chat_id=user_id,
-                text="🚫 *Professional Conversion Cancelled*\n\n"
-                     "Your conversion job has been cancelled because your account has been banned. "
-                     "If you believe this is a mistake, please contact the administrator.",
-                parse_mode='Markdown'
-            )
-        except Exception as e:
-            logger.error(f"Error sending ban notification to user {user_id}: {e}")
-    
-    def add_to_history(self, job_data, output_path):
-        """Add professional conversion to history"""
-        try:
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT INTO history 
-                (user_id, input_type, output_type, input_size, output_size, success, conversion_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                job_data['user_id'],
-                job_data['input_type'],
-                job_data['output_format'],
-                job_data['file_size'],
-                os.path.getsize(output_path),
-                True,
-                0
-            ))
-            
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error(f"Error adding to professional history: {e}")
-    
-    async def cleanup_files(self, file_path):
-        """Cleanup temporary files"""
-        try:
-            if file_path and os.path.exists(file_path):
-                os.remove(file_path)
-                logger.info(f"🧹 Cleaned up professional conversion file: {file_path}")
-        except Exception as e:
-            logger.error(f"Error cleaning up professional files: {e}")
+            stdout, stderr = await process.communicate()
+            return process.returncode == 0
+        except:
+            return False
 
-# Global professional queue manager instance
-queue_manager = QueueManager()
+    async def convert_file(self, input_path, output_format, input_extension=None):
+        """Universal file conversion for all supported formats"""
+        try:
+            if not input_extension:
+                input_extension = os.path.splitext(input_path)[1].lstrip('.').lower()
+            
+            logger.info(f"Converting {input_extension} to {output_format}")
+            
+            # Get file categories
+            input_category = self.supported_formats.get(input_extension)
+            output_category = self.supported_formats.get(output_format)
+            
+            if not input_category:
+                raise Exception(f"Unsupported input format: {input_extension}")
+            if not output_category:
+                raise Exception(f"Unsupported output format: {output_format}")
+            
+            # Route to appropriate converter
+            if input_category == 'image':
+                return await self._convert_image(input_path, output_format, input_extension)
+            elif input_category == 'audio':
+                return await self._convert_audio(input_path, output_format, input_extension)
+            elif input_category == 'video':
+                return await self._convert_video(input_path, output_format, input_extension)
+            elif input_category == 'document':
+                return await self._convert_document(input_path, output_format, input_extension)
+            elif input_category == 'presentation':
+                return await self._convert_presentation(input_path, output_format, input_extension)
+            else:
+                raise Exception(f"No converter for category: {input_category}")
+                
+        except Exception as e:
+            logger.error(f"Universal conversion error: {e}")
+            raise
+    
+    async def _convert_image(self, input_path, output_format, input_extension):
+        """Convert image files - ALL 20 COMBINATIONS SUPPORTED"""
+        try:
+            from PIL import Image, ImageSequence, ImageEnhance
+            
+            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
+            
+            # Handle GIF output specially
+            if output_format == 'gif':
+                return await self._create_animated_gif(input_path, output_path, input_extension)
+            
+            with Image.open(input_path) as img:
+                # Handle format-specific conversions
+                if output_format in ['jpg', 'jpeg']:
+                    # Convert to RGB for JPEG formats
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        if img.mode == 'P' and 'transparency' in img.info:
+                            img = img.convert('RGBA')
+                        background = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'RGBA':
+                            background.paste(img, mask=img.split()[-1])
+                        else:
+                            background.paste(img)
+                        img = background
+                    elif img.mode != 'RGB':
+                        img = img.convert('RGB')
+                
+                # Save with appropriate settings
+                save_kwargs = {}
+                if output_format in ['jpg', 'jpeg']:
+                    save_kwargs = {'format': 'JPEG', 'quality': 95, 'optimize': True}
+                elif output_format == 'png':
+                    save_kwargs = {'format': 'PNG', 'optimize': True}
+                elif output_format == 'bmp':
+                    save_kwargs = {'format': 'BMP'}
+                elif output_format == 'pdf':
+                    # Convert image to PDF
+                    return await self._image_to_pdf(input_path, output_path)
+                else:
+                    save_kwargs = {'format': output_format.upper()}
+                
+                if output_format != 'pdf':  # PDF handled separately
+                    img.save(output_path, **save_kwargs)
+                    return output_path
+                
+        except Exception as e:
+            logger.error(f"Image conversion error: {e}")
+            raise Exception(f"Image conversion failed: {str(e)}")
+    
+    async def _create_animated_gif(self, input_path, output_path, input_extension):
+        """Create animated GIF from any image with 3-second duration"""
+        try:
+            from PIL import Image, ImageSequence, ImageEnhance
+            
+            # Open the input image
+            with Image.open(input_path) as img:
+                frames = []
+                duration = 100  # 100ms per frame
+                total_frames = 30  # 30 frames for 3 seconds
+                
+                # Handle different input types
+                if input_extension.lower() == 'gif':
+                    # Extract frames from existing GIF
+                    for frame in ImageSequence.Iterator(img):
+                        frame = frame.convert('RGBA')
+                        frames.append(frame.copy())
+                    
+                    # If GIF has fewer frames, duplicate to reach 3 seconds
+                    if len(frames) < total_frames:
+                        original_frames = frames.copy()
+                        while len(frames) < total_frames:
+                            frames.extend(original_frames)
+                        frames = frames[:total_frames]
+                        
+                else:
+                    # Create animated GIF from static image
+                    base_img = img.convert('RGBA')
+                    
+                    # Create different variations for animation
+                    for i in range(total_frames):
+                        frame = base_img.copy()
+                        
+                        # Add subtle effects for different frames to create animation
+                        if i % 10 == 0:  # Every 10th frame, add a slight variation
+                            # Create a slightly enhanced version
+                            enhancer = ImageEnhance.Brightness(frame)
+                            frame = enhancer.enhance(1.02)  # Very subtle brightness change
+                        
+                        frames.append(frame)
+                
+                # Save as animated GIF
+                if len(frames) > 1:
+                    frames[0].save(
+                        output_path,
+                        format='GIF',
+                        save_all=True,
+                        append_images=frames[1:],
+                        duration=duration,
+                        loop=0,
+                        optimize=True
+                    )
+                    
+                    # Verify the GIF was created properly
+                    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                        logger.info(f"✅ Created animated GIF with {len(frames)} frames")
+                        return output_path
+                    else:
+                        raise Exception("GIF creation failed - no output file")
+                else:
+                    raise Exception("Not enough frames to create animated GIF")
+                    
+        except Exception as e:
+            logger.error(f"Animated GIF creation error: {e}")
+            # Fallback to simple conversion if animation fails
+            try:
+                with Image.open(input_path) as img:
+                    img.save(output_path, 'GIF')
+                    return output_path
+            except Exception as fallback_error:
+                raise Exception(f"GIF conversion failed: {str(fallback_error)}")
+    
+    async def _image_to_pdf(self, input_path, output_path):
+        """Convert image to PDF"""
+        try:
+            from PIL import Image
+            import img2pdf
+            
+            with Image.open(input_path) as img:
+                # Convert to RGB if necessary
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Save as PDF
+                with open(output_path, "wb") as f:
+                    f.write(img2pdf.convert([input_path]))
+            return output_path
+        except Exception as e:
+            raise Exception(f"Image to PDF conversion failed: {str(e)}")
+    
+    async def _convert_audio(self, input_path, output_format, input_extension):
+        """Convert audio files using FFmpeg with smart compression"""
+        try:
+            # Check FFmpeg availability
+            if not await self._check_ffmpeg_available():
+                raise Exception("FFmpeg is required for audio conversion but is not installed")
+            
+            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
+            
+            # Get input file size to determine optimal settings
+            input_size = os.path.getsize(input_path)
+            input_size_mb = input_size / (1024 * 1024)
+            
+            logger.info(f"Audio conversion: {input_extension} -> {output_format}, Input size: {input_size_mb:.1f}MB")
+            
+            # Smart compression based on input size
+            if input_size_mb > 50:  # Large files
+                compression_level = 'high'
+            elif input_size_mb > 20:  # Medium files
+                compression_level = 'medium'
+            else:  # Small files
+                compression_level = 'low'
+            
+            cmd = [
+                'ffmpeg', '-i', input_path,
+                '-y',  # Overwrite
+                '-loglevel', 'error',
+                '-hide_banner',
+            ]
+            
+            # Smart audio codec settings based on format and file size
+            if output_format == 'mp3':
+                if compression_level == 'high':
+                    cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '128k', '-compression_level', '0'])
+                elif compression_level == 'medium':
+                    cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '192k', '-compression_level', '0'])
+                else:
+                    cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '256k', '-q:a', '0'])
+                    
+            elif output_format == 'wav':
+                # For WAV, we can control size by using different sample rates and bit depths
+                if compression_level == 'high':
+                    cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '1', '-ar', '22050'])  # Mono, lower sample rate
+                elif compression_level == 'medium':
+                    cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '1', '-ar', '44100'])  # Mono, standard sample rate
+                else:
+                    cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '2', '-ar', '44100'])  # Stereo, standard
+                    
+            elif output_format == 'aac':
+                if compression_level == 'high':
+                    cmd.extend(['-codec:a', 'aac', '-b:a', '128k', '-ac', '1'])
+                elif compression_level == 'medium':
+                    cmd.extend(['-codec:a', 'aac', '-b:a', '192k', '-ac', '2'])
+                else:
+                    cmd.extend(['-codec:a', 'aac', '-b:a', '256k', '-ac', '2'])
+            
+            cmd.append(output_path)
+            
+            logger.info(f"Audio conversion command: {' '.join(cmd)}")
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            # Monitor progress with timeout
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)  # 5 minutes timeout
+            
+            if process.returncode == 0 and os.path.exists(output_path):
+                # Verify output file is valid and check size
+                output_size = os.path.getsize(output_path)
+                output_size_mb = output_size / (1024 * 1024)
+                
+                logger.info(f"Audio conversion successful. Output size: {output_size_mb:.1f}MB")
+                
+                if output_size == 0:
+                    raise Exception("Conversion produced empty file")
+                
+                # If output is still too large, apply additional compression
+                if output_size > 45 * 1024 * 1024:  # Over 45MB
+                    logger.info(f"Output file too large ({output_size_mb:.1f}MB), applying additional compression")
+                    compressed_path = await self._compress_audio_file(output_path, output_format)
+                    if compressed_path:
+                        return compressed_path
+                
+                return output_path
+            else:
+                error_msg = stderr.decode('utf-8', errors='ignore') if stderr else "Audio conversion failed"
+                logger.error(f"Audio conversion error: {error_msg}")
+                raise Exception(f"Audio conversion error: {error_msg}")
+                
+        except asyncio.TimeoutError:
+            raise Exception("Audio conversion timeout - file might be too large")
+        except Exception as e:
+            logger.error(f"Audio conversion failed: {str(e)}")
+            raise Exception(f"Audio conversion failed: {str(e)}")
+
+    async def _compress_audio_file(self, input_path, output_format):
+        """Apply additional compression to audio files that are too large"""
+        try:
+            compressed_path = input_path.replace(f'.{output_format}', f'_compressed.{output_format}')
+            
+            logger.info(f"Applying additional compression to reduce file size")
+            
+            cmd = ['ffmpeg', '-i', input_path, '-y']
+            
+            if output_format == 'wav':
+                # Maximum compression for WAV: mono, low sample rate
+                cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '1', '-ar', '16000'])
+            elif output_format == 'mp3':
+                # Maximum compression for MP3: low bitrate
+                cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '96k'])
+            elif output_format == 'aac':
+                # Maximum compression for AAC: low bitrate, mono
+                cmd.extend(['-codec:a', 'aac', '-b:a', '96k', '-ac', '1'])
+            else:
+                cmd.extend(['-codec:a', 'copy'])  # Just copy if we can't compress further
+            
+            cmd.append(compressed_path)
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+            
+            if process.returncode == 0 and os.path.exists(compressed_path):
+                compressed_size = os.path.getsize(compressed_path)
+                compressed_size_mb = compressed_size / (1024 * 1024)
+                logger.info(f"Compression successful. New size: {compressed_size_mb:.1f}MB")
+                
+                # Replace original with compressed version
+                os.remove(input_path)
+                return compressed_path
+            else:
+                logger.warning("Additional compression failed, returning original file")
+                return input_path
+                
+        except Exception as e:
+            logger.error(f"Audio compression failed: {e}")
+            return input_path  # Return original if compression fails
+    
+    async def _convert_video(self, input_path, output_format, input_extension):
+        """Convert video files using FFmpeg - ALL 12 COMBINATIONS SUPPORTED"""
+        try:
+            # Check FFmpeg availability
+            if not await self._check_ffmpeg_available():
+                raise Exception("FFmpeg is required for video conversion but is not installed")
+            
+            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
+            
+            cmd = [
+                'ffmpeg', '-i', input_path,
+                '-y',
+                '-loglevel', 'error',
+                '-hide_banner',
+            ]
+            
+            # Video conversion settings for all formats
+            if output_format == 'mp4':
+                cmd.extend(['-c:v', 'libx264', '-c:a', 'aac', '-movflags', '+faststart'])
+            elif output_format == 'avi':
+                cmd.extend(['-c:v', 'mpeg4', '-c:a', 'mp3'])
+            elif output_format == 'mov':
+                cmd.extend(['-c:v', 'libx264', '-c:a', 'aac'])
+            elif output_format == 'mkv':
+                cmd.extend(['-c:v', 'libx264', '-c:a', 'aac'])
+            elif output_format == 'gif':
+                # Convert to GIF with 3-second duration
+                cmd = [
+                    'ffmpeg', '-i', input_path,
+                    '-y',
+                    '-t', '3',  # 3 seconds
+                    '-vf', 'fps=10,scale=320:-1:flags=lanczos',
+                    output_path
+                ]
+            
+            if output_format != 'gif':  # Already set for GIF
+                cmd.append(output_path)
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
+            
+            if process.returncode == 0 and os.path.exists(output_path):
+                return output_path
+            else:
+                error_msg = stderr.decode('utf-8', errors='ignore') if stderr else "Video conversion failed"
+                raise Exception(f"Video conversion error: {error_msg}")
+                
+        except Exception as e:
+            raise Exception(f"Video conversion failed: {str(e)}")
+    
+    async def _convert_document(self, input_path, output_format, input_extension):
+        """Convert document files - ALL RELIABLE COMBINATIONS SUPPORTED"""
+        try:
+            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
+            
+            # PDF conversions
+            if input_extension == 'pdf':
+                if output_format == 'txt':
+                    return await self._pdf_to_text(input_path, output_path)
+                elif output_format in ['jpg', 'jpeg', 'png']:
+                    return await self._pdf_to_image(input_path, output_path, output_format)
+                elif output_format == 'docx':
+                    return await self._pdf_to_docx(input_path, output_path)
+                elif output_format == 'xlsx':
+                    return await self._pdf_to_excel(input_path, output_path)
+            
+            # Text conversions
+            elif input_extension == 'txt':
+                if output_format == 'pdf':
+                    return await self._text_to_pdf(input_path, output_path)
+                elif output_format == 'docx':
+                    return await self._text_to_docx(input_path, output_path)
+            
+            # Word document conversions
+            elif input_extension == 'docx':
+                if output_format == 'pdf':
+                    return await self._docx_to_pdf(input_path, output_path)
+                elif output_format == 'txt':
+                    return await self._docx_to_text(input_path, output_path)
+            
+            # Excel conversions
+            elif input_extension == 'xlsx':
+                if output_format == 'pdf':
+                    return await self._excel_to_pdf(input_path, output_path)
+            
+            # ODT conversions
+            elif input_extension == 'odt':
+                if output_format == 'pdf':
+                    return await self._odt_to_pdf(input_path, output_path)
+            
+            raise Exception(f"Document conversion from {input_extension} to {output_format} not implemented")
+            
+        except Exception as e:
+            raise Exception(f"Document conversion failed: {str(e)}")
+    
+    async def _convert_presentation(self, input_path, output_format, input_extension):
+        """Convert presentation files"""
+        try:
+            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
+            
+            if output_format == 'pdf':
+                if input_extension in ['pptx', 'ppt']:
+                    return await self._ppt_to_pdf(input_path, output_path)
+            
+            raise Exception(f"Presentation conversion from {input_extension} to {output_format} not implemented")
+            
+        except Exception as e:
+            raise Exception(f"Presentation conversion failed: {str(e)}")
+    
+    async def _pdf_to_text(self, input_path, output_path):
+        """Convert PDF to text"""
+        try:
+            import fitz  # PyMuPDF
+            
+            doc = fitz.open(input_path)
+            text_content = ""
+            
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                text = page.get_text()
+                text_content += text + "\n\n"
+            
+            doc.close()
+            
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(text_content)
+            
+            return output_path
+        except Exception as e:
+            raise Exception(f"PDF to text conversion failed: {str(e)}")
+    
+    async def _pdf_to_image(self, input_path, output_path, output_format):
+        """Convert PDF to image"""
+        try:
+            from pdf2image import convert_from_path
+            
+            images = convert_from_path(input_path, dpi=150)
+            if images:
+                # Save first page only
+                images[0].save(output_path, format=output_format.upper(), quality=95)
+                return output_path
+            else:
+                raise Exception("No pages found in PDF")
+        except Exception as e:
+            raise Exception(f"PDF to image conversion failed: {str(e)}")
+    
+    async def _pdf_to_docx(self, input_path, output_path):
+        """Convert PDF to DOCX"""
+        try:
+            from pdf2docx import Converter
+            
+            cv = Converter(input_path)
+            cv.convert(output_path)
+            cv.close()
+            
+            return output_path
+        except Exception as e:
+            raise Exception(f"PDF to DOCX conversion failed: {str(e)}")
+    
+    async def _pdf_to_excel(self, input_path, output_path):
+        """Convert PDF to Excel (basic text extraction)"""
+        try:
+            import fitz
+            import pandas as pd
+            
+            doc = fitz.open(input_path)
+            text_content = []
+            
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                text = page.get_text()
+                if text.strip():
+                    text_content.append([f"Page {page_num + 1}", text[:1000]])  # Limit text length
+            
+            doc.close()
+            
+            if text_content:
+                df = pd.DataFrame(text_content, columns=['Page', 'Content'])
+                df.to_excel(output_path, index=False)
+                return output_path
+            else:
+                raise Exception("No text content found in PDF")
+        except Exception as e:
+            raise Exception(f"PDF to Excel conversion failed: {str(e)}")
+    
+    async def _text_to_pdf(self, input_path, output_path):
+        """Convert text to PDF"""
+        try:
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter
+            
+            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
+                text_content = f.read()
+            
+            c = canvas.Canvas(output_path, pagesize=letter)
+            width, height = letter
+            
+            c.setFont("Helvetica", 12)
+            y_position = height - 40
+            line_height = 14
+            
+            # Simple text wrapping
+            lines = text_content.split('\n')
+            
+            # Add lines to PDF
+            for line in lines[:100]:  # Limit to 100 lines
+                if y_position < 40:
+                    c.showPage()
+                    y_position = height - 40
+                    c.setFont("Helvetica", 12)
+                
+                if line.strip():
+                    c.drawString(50, y_position, line[:80])
+                y_position -= line_height
+            
+            c.save()
+            return output_path
+        except Exception as e:
+            raise Exception(f"Text to PDF conversion failed: {str(e)}")
+    
+    async def _text_to_docx(self, input_path, output_path):
+        """Convert text to DOCX"""
+        try:
+            from docx import Document
+            
+            with open(input_path, 'r', encoding='utf-8') as f:
+                text_content = f.read()
+            
+            doc = Document()
+            doc.add_paragraph(text_content)
+            doc.save(output_path)
+            
+            return output_path
+        except Exception as e:
+            raise Exception(f"Text to DOCX conversion failed: {str(e)}")
+    
+    async def _docx_to_pdf(self, input_path, output_path):
+        """Convert DOCX to PDF"""
+        try:
+            # Try docx2pdf first
+            try:
+                from docx2pdf import convert
+                convert(input_path, output_path)
+                return output_path
+            except:
+                # Fallback to manual conversion
+                from docx import Document
+                from reportlab.pdfgen import canvas
+                from reportlab.lib.pagesizes import letter
+                
+                doc = Document(input_path)
+                c = canvas.Canvas(output_path, pagesize=letter)
+                width, height = letter
+                
+                c.setFont("Helvetica", 12)
+                y_position = height - 40
+                line_height = 14
+                
+                for paragraph in doc.paragraphs:
+                    if paragraph.text.strip():
+                        if y_position < 40:
+                            c.showPage()
+                            y_position = height - 40
+                            c.setFont("Helvetica", 12)
+                        
+                        c.drawString(50, y_position, paragraph.text[:80])
+                        y_position -= line_height
+                
+                c.save()
+                return output_path
+                
+        except Exception as e:
+            raise Exception(f"DOCX to PDF conversion failed: {str(e)}")
+    
+    async def _docx_to_text(self, input_path, output_path):
+        """Convert DOCX to text"""
+        try:
+            from docx import Document
+            
+            doc = Document(input_path)
+            text_content = []
+            
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    text_content.append(paragraph.text)
+            
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(text_content))
+            
+            return output_path
+        except Exception as e:
+            raise Exception(f"DOCX to text conversion failed: {str(e)}")
+    
+    async def _excel_to_pdf(self, input_path, output_path):
+        """Convert Excel to PDF"""
+        try:
+            import pandas as pd
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import letter
+            
+            df = pd.read_excel(input_path)
+            
+            c = canvas.Canvas(output_path, pagesize=letter)
+            width, height = letter
+            
+            c.setFont("Helvetica-Bold", 16)
+            c.drawString(50, height - 50, f"Data from: {os.path.basename(input_path)}")
+            
+            c.setFont("Helvetica", 10)
+            y_position = height - 80
+            
+            # Add headers
+            headers = df.columns.tolist()
+            for i, header in enumerate(headers):
+                c.drawString(50 + i * 100, y_position, str(header)[:15])
+            
+            y_position -= 20
+            
+            # Add data (first 20 rows)
+            for _, row in df.head(20).iterrows():
+                for i, value in enumerate(row):
+                    c.drawString(50 + i * 100, y_position, str(value)[:15])
+                y_position -= 15
+                if y_position < 50:
+                    c.showPage()
+                    y_position = height - 50
+            
+            c.save()
+            return output_path
+        except Exception as e:
+            raise Exception(f"Excel to PDF conversion failed: {str(e)}")
+    
+    async def _odt_to_pdf(self, input_path, output_path):
+        """Convert ODT to PDF"""
+        try:
+            # Use LibreOffice for ODT to PDF conversion
+            cmd = [
+                'libreoffice', '--headless', '--convert-to', 'pdf',
+                '--outdir', os.path.dirname(output_path), input_path
+            ]
+            
+            await self._run_command(cmd)
+            
+            # Find the converted file
+            base_name = os.path.splitext(os.path.basename(input_path))[0]
+            possible_path = os.path.join(os.path.dirname(output_path), base_name + '.pdf')
+            
+            if os.path.exists(possible_path):
+                if possible_path != output_path:
+                    os.rename(possible_path, output_path)
+                return output_path
+            else:
+                raise Exception("ODT to PDF conversion failed")
+                
+        except Exception as e:
+            raise Exception(f"ODT to PDF conversion failed: {str(e)}")
+    
+    async def _ppt_to_pdf(self, input_path, output_path):
+        """Convert PowerPoint to PDF"""
+        try:
+            # Use LibreOffice for PPT to PDF conversion
+            cmd = [
+                'libreoffice', '--headless', '--convert-to', 'pdf',
+                '--outdir', os.path.dirname(output_path), input_path
+            ]
+            
+            await self._run_command(cmd)
+            
+            # Find the converted file
+            base_name = os.path.splitext(os.path.basename(input_path))[0]
+            possible_path = os.path.join(os.path.dirname(output_path), base_name + '.pdf')
+            
+            if os.path.exists(possible_path):
+                if possible_path != output_path:
+                    os.rename(possible_path, output_path)
+                return output_path
+            else:
+                raise Exception("PowerPoint to PDF conversion failed")
+                
+        except Exception as e:
+            raise Exception(f"PowerPoint to PDF conversion failed: {str(e)}")
+    
+    async def _run_command(self, cmd):
+        """Run system command"""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode != 0:
+                error_msg = stderr.decode() if stderr else "Command failed"
+                raise Exception(f"Command failed: {error_msg}")
+            
+            return stdout.decode() if stdout else ""
+            
+        except Exception as e:
+            raise Exception(f"Command execution failed: {str(e)}")
+
+# Global universal converter instance
+universal_converter = UniversalConverter()
