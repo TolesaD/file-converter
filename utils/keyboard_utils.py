@@ -151,13 +151,15 @@ def get_format_suggestions_keyboard(file_extension, file_type):
     # Get supported conversions from router
     try:
         # Run the async function in a sync context
+        import asyncio
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         supported_formats = loop.run_until_complete(
             converter_router.get_supported_conversions(file_extension)
         )
         loop.close()
-    except:
+    except Exception as e:
+        logger.error(f"Error getting supported conversions: {e}")
         # Fallback if async call fails
         supported_formats = get_fallback_suggestions(file_extension, file_type)
     
@@ -165,8 +167,10 @@ def get_format_suggestions_keyboard(file_extension, file_type):
     row = []
     for i, target_format in enumerate(supported_formats):
         if target_format != file_extension:  # Don't suggest converting to same format
+            # Use emojis based on target format type
+            emoji = _get_format_emoji(target_format)
             button = InlineKeyboardButton(
-                f"➡️ {target_format.upper()}",
+                f"{emoji} {target_format.upper()}",
                 callback_data=f"auto_convert_{file_extension}_{target_format}"
             )
             row.append(button)
@@ -181,15 +185,27 @@ def get_format_suggestions_keyboard(file_extension, file_type):
         keyboard.append(row)
     
     # Add navigation buttons
+    keyboard.append([InlineKeyboardButton("🔍 Browse All Categories", callback_data="commands")])
     keyboard.append([InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")])
-    keyboard.append([InlineKeyboardButton("📋 Browse Categories", callback_data="commands")])
     
     return InlineKeyboardMarkup(keyboard)
+
+def _get_format_emoji(format_type):
+    """Get appropriate emoji for file format"""
+    emoji_map = {
+        'pdf': '📄',
+        'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🎬', 'bmp': '🖼️',
+        'mp3': '🎵', 'wav': '🎵', 'aac': '🎵',
+        'mp4': '🎥', 'avi': '🎥', 'mov': '🎥', 'mkv': '🎥',
+        'docx': '📝', 'txt': '📝', 'xlsx': '📊', 'odt': '📝',
+        'pptx': '🖼️', 'ppt': '🖼️'
+    }
+    return emoji_map.get(format_type, '📁')
 
 def get_fallback_suggestions(file_extension, file_type):
     """Fallback suggestions if router fails"""
     suggestions_map = {
-        'image': ['jpg', 'png', 'jpeg', 'bmp', 'gif', 'pdf'],
+        'image': ['jpg', 'png', 'pdf', 'bmp', 'gif'],
         'audio': ['mp3', 'wav', 'aac'],
         'video': ['mp4', 'avi', 'mov', 'mkv', 'gif'],
         'document': ['pdf', 'docx', 'txt', 'xlsx'],

@@ -17,7 +17,7 @@ async def is_user_banned(user_id):
     return user and user['is_banned']
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle uploaded files with large file support"""
+    """Handle uploaded files with smart detection"""
     user = update.effective_user
     user_id = user.id
     
@@ -87,7 +87,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data.pop('expecting_followup_upload', None)
             await process_file_directly(update, context, input_path, file_extension, user_id)
         else:
-            # Show conversion options
+            # Show conversion options with smart detection
             await detect_and_suggest_conversions(update, context, file_extension, file_name, user_id, input_path)
             
     except Exception as e:
@@ -102,10 +102,10 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
 
 async def detect_and_suggest_conversions(update, context, file_extension, file_name, user_id, input_path):
-    """Detect file type and show conversion suggestions"""
+    """Detect file type and show smart conversion suggestions"""
     
     try:
-        # Detect file type
+        # Detect file type using the smart detection function
         file_type, category_name = detect_file_type(file_extension)
         
         if file_type == 'unknown':
@@ -130,12 +130,13 @@ async def detect_and_suggest_conversions(update, context, file_extension, file_n
         logger.info(f"File detected as: {file_type} ({file_extension})")
         
         # Show smart suggestions
+        file_size_mb = context.user_data['last_downloaded_file']['size'] // (1024 * 1024)
         suggestion_text = f"""
 🧠 *Smart File Detection*
 
 📁 File: `{file_name}`
 🔍 Type: .{file_extension.upper()} ({category_name})
-📊 Size: {context.user_data['last_downloaded_file']['size'] // 1024} KB
+📊 Size: {file_size_mb} MB
 
 💡 *I can convert this to:*
 """
@@ -215,7 +216,7 @@ async def process_file_directly(update, context, input_path, file_extension, use
         # Send queue confirmation
         queue_message = f"✅ *File queued for processing!*\n\n"
         queue_message += f"🆔 Job ID: `{job_id}`\n"
-        queue_message += f"📊 Queue position: `{queue_position}`\n"
+        queue_message += f"📋 Queue position: `{queue_position}`\n"
         queue_message += f"🎯 Conversion: `{file_extension.upper()} → {output_format.upper()}`\n\n"
         queue_message += "⏳ You'll receive progress updates shortly..."
         
