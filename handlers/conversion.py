@@ -17,7 +17,7 @@ async def is_user_banned(user_id):
     return user and user['is_banned']
 
 async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle uploaded files with smart detection"""
+    """Handle uploaded files with large file support"""
     user = update.effective_user
     user_id = user.id
     
@@ -54,20 +54,25 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Unsupported file type!")
         return
     
-    # Check file size
-    if file.file_size > 50 * 1024 * 1024:
-        await update.message.reply_text("❌ File too large! Maximum size is 50MB.")
+    # Check file size against REAL Telegram limits
+    if file.file_size > Config.MAX_FILE_SIZE:
+        await update.message.reply_text(
+            f"❌ File too large! Maximum size is 2GB.\n"
+            f"Your file: {file.file_size // (1024*1024*1024)}GB",
+            parse_mode='Markdown'
+        )
         return
     
-    # Download file
-    progress_msg = await update.message.reply_text("📥 Downloading your file...")
+    # Download file with progress
+    file_size_mb = file.file_size // (1024 * 1024) if file.file_size else 0
+    progress_msg = await update.message.reply_text(f"📥 Downloading your file ({file_size_mb}MB)...")
     
     try:
         file_obj = await file.get_file()
         input_path = f"temp/uploads/{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_extension}"
         await file_obj.download_to_drive(input_path)
         
-        logger.info(f"File downloaded to: {input_path}")
+        logger.info(f"File downloaded to: {input_path} (Size: {file.file_size} bytes)")
         
         # Store file info
         context.user_data['last_downloaded_file'] = {

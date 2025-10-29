@@ -14,36 +14,38 @@ class Config:
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///converter.db')
     
-    # File settings
-    MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB input limit
-    MAX_OUTPUT_SIZE = 50 * 1024 * 1024  # 50MB Telegram output limit
+    # REAL Telegram file size limits (based on actual capabilities)
+    MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB - Telegram's actual limit for bots
+    MAX_OUTPUT_SIZE = 2 * 1024 * 1024 * 1024  # 2GB output limit
+    
+    # Telegram sending limits (much higher than commonly believed)
+    MAX_PHOTO_SIZE = 50 * 1024 * 1024  # 50MB for photos (actual limit)
+    MAX_AUDIO_SIZE = 50 * 1024 * 1024  # 50MB for audio files
+    MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024  # 2GB for video files
+    MAX_DOCUMENT_SIZE = 2 * 1024 * 1024 * 1024  # 2GB for documents
+    
+    # Directory settings
     TEMP_DIR = "temp"
     UPLOAD_DIR = "temp/uploads"
     OUTPUT_DIR = "temp/outputs"
     
-    # Enhanced conversion timeouts
-    MAX_CONVERSION_TIME = 600  # 10 minutes overall
-    IMAGE_CONVERSION_TIMEOUT = 180  # 3 minutes for images
-    AUDIO_CONVERSION_TIMEOUT = 300  # 5 minutes for audio
-    VIDEO_CONVERSION_TIMEOUT = 600  # 10 minutes for video
-    DOCUMENT_CONVERSION_TIMEOUT = 300  # 5 minutes for documents
-    PRESENTATION_CONVERSION_TIMEOUT = 300  # 5 minutes for presentations
+    # Enhanced conversion timeouts for large files
+    MAX_CONVERSION_TIME = 1800  # 30 minutes for very large files
+    IMAGE_CONVERSION_TIMEOUT = 300  # 5 minutes for images
+    AUDIO_CONVERSION_TIMEOUT = 600  # 10 minutes for audio
+    VIDEO_CONVERSION_TIMEOUT = 1800  # 30 minutes for video
+    DOCUMENT_CONVERSION_TIMEOUT = 600  # 10 minutes for documents
+    PRESENTATION_CONVERSION_TIMEOUT = 600  # 10 minutes for presentations
     
-    # Queue and processing settings
-    MAX_CONCURRENT_JOBS = 3  # Process 3 files simultaneously
-    JOB_TIMEOUT = 300  # 5 minutes per job
+    # Queue and processing settings optimized for large files
+    MAX_CONCURRENT_JOBS = 2  # Reduce concurrent jobs for large file processing
+    JOB_TIMEOUT = 1800  # 30 minutes per job
     
-    # Telegram sending limits
-    MAX_PHOTO_SIZE = 10 * 1024 * 1024  # 10MB for photos
-    MAX_AUDIO_SIZE = 20 * 1024 * 1024  # 20MB for audio
-    MAX_VIDEO_SIZE = 20 * 1024 * 1024  # 20MB for video
-    MAX_DOCUMENT_SIZE = 50 * 1024 * 1024  # 50MB for documents
-    
-    # Quality settings
-    IMAGE_QUALITY = 95  # High quality for images
-    AUDIO_BITRATE = '320k'  # High quality for audio
-    VIDEO_QUALITY = 'crf=23'  # High quality for video
-    PDF_DPI = 300  # High DPI for PDF conversions
+    # Quality settings for large files
+    IMAGE_QUALITY = 95
+    AUDIO_BITRATE = '320k'
+    VIDEO_QUALITY = 'crf=23'
+    PDF_DPI = 300
     
     # Queue management
     processing_queue = asyncio.Queue()
