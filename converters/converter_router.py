@@ -2,9 +2,27 @@ import os
 import asyncio
 import logging
 from config import Config
-from .universal_converter import universal_converter
 
 logger = logging.getLogger(__name__)
+
+# Import universal_converter with error handling to avoid circular imports
+universal_converter = None
+try:
+    from .universal_converter import universal_converter
+except ImportError as e:
+    logger.error(f"Failed to import universal_converter: {e}")
+    # Create a fallback converter
+    class FallbackUniversalConverter:
+        def __init__(self):
+            self.supported_formats = {}
+            for category, formats in Config.SUPPORTED_FORMATS.items():
+                for fmt in formats:
+                    self.supported_formats[fmt] = category
+        
+        async def convert_file(self, input_path, output_format, input_extension=None):
+            raise Exception("Universal converter not available - import failed")
+    
+    universal_converter = FallbackUniversalConverter()
 
 class ConverterRouter:
     def __init__(self):
