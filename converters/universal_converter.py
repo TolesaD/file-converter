@@ -228,7 +228,7 @@ class UniversalConverter:
             raise Exception(f"Professional image to PDF conversion failed: {str(e)}")
     
     async def _convert_audio(self, input_path, output_format, input_extension):
-        """Professional audio conversion with progress tracking"""
+        """Convert audio files using FFmpeg with smart compression"""
         try:
             # Check FFmpeg availability
             if not await self._check_ffmpeg_available():
@@ -236,24 +236,56 @@ class UniversalConverter:
             
             output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
             
-            # Professional audio conversion settings
+            # Get input file size to determine optimal settings
+            input_size = os.path.getsize(input_path)
+            input_size_mb = input_size / (1024 * 1024)
+            
+            logger.info(f"Audio conversion: {input_extension} -> {output_format}, Input size: {input_size_mb:.1f}MB")
+            
+            # Smart compression based on input size
+            if input_size_mb > 50:  # Large files
+                compression_level = 'high'
+            elif input_size_mb > 20:  # Medium files
+                compression_level = 'medium'
+            else:  # Small files
+                compression_level = 'low'
+            
             cmd = [
                 'ffmpeg', '-i', input_path,
                 '-y',  # Overwrite
                 '-loglevel', 'error',
                 '-hide_banner',
-                '-progress', 'pipe:1',  # Progress reporting
             ]
             
-            # Professional audio codec settings
+            # Smart audio codec settings based on format and file size
             if output_format == 'mp3':
-                cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '320k', '-q:a', '0'])
+                if compression_level == 'high':
+                    cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '128k', '-compression_level', '0'])
+                elif compression_level == 'medium':
+                    cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '192k', '-compression_level', '0'])
+                else:
+                    cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '256k', '-q:a', '0'])
+                    
             elif output_format == 'wav':
-                cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '2', '-ar', '44100'])
+                # For WAV, we can control size by using different sample rates and bit depths
+                if compression_level == 'high':
+                    cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '1', '-ar', '22050'])  # Mono, lower sample rate
+                elif compression_level == 'medium':
+                    cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '1', '-ar', '44100'])  # Mono, standard sample rate
+                else:
+                    cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '2', '-ar', '44100'])  # Stereo, standard
+                    
             elif output_format == 'aac':
-                cmd.extend(['-codec:a', 'aac', '-b:a', '256k', '-ac', '2'])
+                if compression_level == 'high':
+                    cmd.extend(['-codec:a', 'aac', '-b:a', '128k', '-ac', '1'])
+                elif compression_level == 'medium':
+                    cmd.extend(['-codec:a', 'aac', '-b:a', '192k', '-ac', '2'])
+                else:
+                    cmd.extend(['-codec:a', 'aac', '-b:a', '256k', '-ac', '2'])
             
             cmd.append(output_path)
+            
+            logger.info(f"Audio conversion command: {' '.join(cmd)}")
             
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -261,24 +293,84 @@ class UniversalConverter:
                 stderr=asyncio.subprocess.PIPE
             )
             
-            # Monitor progress
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=180)
+            # Monitor progress with timeout
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)  # 5 minutes timeout
             
             if process.returncode == 0 and os.path.exists(output_path):
-                # Verify output file is valid
-                file_size = os.path.getsize(output_path)
-                if file_size > 0:
-                    return output_path
-                else:
+                # Verify output file is valid and check size
+                output_size = os.path.getsize(output_path)
+                output_size_mb = output_size / (1024 * 1024)
+                
+                logger.info(f"Audio conversion successful. Output size: {output_size_mb:.1f}MB")
+                
+                if output_size == 0:
                     raise Exception("Conversion produced empty file")
+                
+                # If output is still too large, apply additional compression
+                if output_size > 45 * 1024 * 1024:  # Over 45MB
+                    logger.info(f"Output file too large ({output_size_mb:.1f}MB), applying additional compression")
+                    compressed_path = await self._compress_audio_file(output_path, output_format)
+                    if compressed_path:
+                        return compressed_path
+                
+                return output_path
             else:
                 error_msg = stderr.decode('utf-8', errors='ignore') if stderr else "Audio conversion failed"
-                raise Exception(f"Professional audio conversion error: {error_msg}")
+                logger.error(f"Audio conversion error: {error_msg}")
+                raise Exception(f"Audio conversion error: {error_msg}")
                 
         except asyncio.TimeoutError:
             raise Exception("Audio conversion timeout - file might be too large")
         except Exception as e:
-            raise Exception(f"Professional audio conversion failed: {str(e)}")
+            logger.error(f"Audio conversion failed: {str(e)}")
+            raise Exception(f"Audio conversion failed: {str(e)}")
+
+    async def _compress_audio_file(self, input_path, output_format):
+        """Apply additional compression to audio files that are too large"""
+        try:
+            compressed_path = input_path.replace(f'.{output_format}', f'_compressed.{output_format}')
+            
+            logger.info(f"Applying additional compression to reduce file size")
+            
+            cmd = ['ffmpeg', '-i', input_path, '-y']
+            
+            if output_format == 'wav':
+                # Maximum compression for WAV: mono, low sample rate
+                cmd.extend(['-codec:a', 'pcm_s16le', '-ac', '1', '-ar', '16000'])
+            elif output_format == 'mp3':
+                # Maximum compression for MP3: low bitrate
+                cmd.extend(['-codec:a', 'libmp3lame', '-b:a', '96k'])
+            elif output_format == 'aac':
+                # Maximum compression for AAC: low bitrate, mono
+                cmd.extend(['-codec:a', 'aac', '-b:a', '96k', '-ac', '1'])
+            else:
+                cmd.extend(['-codec:a', 'copy'])  # Just copy if we can't compress further
+            
+            cmd.append(compressed_path)
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+            
+            if process.returncode == 0 and os.path.exists(compressed_path):
+                compressed_size = os.path.getsize(compressed_path)
+                compressed_size_mb = compressed_size / (1024 * 1024)
+                logger.info(f"Compression successful. New size: {compressed_size_mb:.1f}MB")
+                
+                # Replace original with compressed version
+                os.remove(input_path)
+                return compressed_path
+            else:
+                logger.warning("Additional compression failed, returning original file")
+                return input_path
+                
+        except Exception as e:
+            logger.error(f"Audio compression failed: {e}")
+            return input_path  # Return original if compression fails
     
     async def _convert_video(self, input_path, output_format, input_extension):
         """Professional video conversion"""
@@ -577,7 +669,7 @@ class UniversalConverter:
         """Advanced text to DOCX conversion"""
         try:
             from docx import Document
-            from docx.shared import Inches
+            from docx.shared import Pt  # Fixed import
             
             with open(input_path, 'r', encoding='utf-8') as f:
                 text_content = f.read()
@@ -587,14 +679,14 @@ class UniversalConverter:
             # Add professional styling
             style = doc.styles['Normal']
             style.font.name = 'Arial'
-            style.font.size = docx.shared.Pt(11)
+            style.font.size = Pt(11)  # Fixed: Use Pt directly
             
             # Add content with proper paragraph formatting
             paragraphs = text_content.split('\n')
             for para in paragraphs:
                 if para.strip():
                     p = doc.add_paragraph(para.strip())
-                    p.paragraph_format.space_after = docx.shared.Pt(6)
+                    p.paragraph_format.space_after = Pt(6)  # Fixed: Use Pt directly
             
             doc.save(output_path)
             return output_path
