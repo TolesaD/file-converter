@@ -644,9 +644,9 @@ async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT
         
         context.user_data['broadcast_step'] = 'confirm'
 
-async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def confirm_broadcast(query, context):
     """Confirm and send broadcast - FIXED VERSION"""
-    query = update.callback_query
+    # Note: 'query' is already the CallbackQuery object, not 'update'
     await query.answer()
     
     user_id = query.from_user.id
