@@ -215,7 +215,18 @@ class QueueManager:
         try:
             # Use the enhanced universal converter
             from converters.universal_converter import universal_converter
-            return await universal_converter.convert_file(input_path, output_format, input_extension)
+            output_path = await universal_converter.convert_file(input_path, output_format, input_extension)
+            
+            # Verify the output file is valid
+            if not output_path or not os.path.exists(output_path):
+                raise Exception("Conversion failed - no output file created")
+                
+            output_size = os.path.getsize(output_path)
+            if output_size == 0:
+                raise Exception("Conversion produced empty file")
+                
+            logger.info(f"Conversion successful: {output_path} ({output_size} bytes)")
+            return output_path
                 
         except Exception as e:
             logger.error(f"Professional conversion error for job {job_data['job_id']}: {e}")
@@ -256,14 +267,25 @@ class QueueManager:
                 caption += f"📊 *Size:* {formatted_size}\n"
                 caption += f"🎯 *Quality:* Professional Grade\n"
                 
-                # Add file size info for large files
-                if file_size_mb > 100:
-                    caption += f"⚡ *Large file detected - sending may take a moment*\n"
-                
                 try:
-                    # For very large files, always use document method (supports up to 2GB)
-                    if file_size > 500 * 1024 * 1024:  # Over 500MB
-                        caption += f"\n📦 *Sent as document for best compatibility*"
+                    # For audio files, always try audio method first for better user experience
+                    if file_ext in ['MP3', 'WAV', 'AAC', 'OGG']:
+                        if file_size <= 50 * 1024 * 1024:  # 50MB limit for audio
+                            await bot.send_audio(
+                                chat_id=user_id,
+                                audio=open(file_path, 'rb'),
+                                caption=caption,
+                                parse_mode='Markdown'
+                            )
+                            return
+                        else:
+                            # Large audio file, send as document with explanation
+                            caption += f"\n📦 *Large audio file - sent as document*\n"
+                            caption += f"💡 *Tip:* For better audio quality, try converting to MP3 with lower bitrate"
+                    
+                    # For very large files (>500MB), always use document method
+                    if file_size > 500 * 1024 * 1024:
+                        caption += f"\n📦 *Large file - sent as document*"
                         await bot.send_document(
                             chat_id=user_id,
                             document=open(file_path, 'rb'),
@@ -283,14 +305,6 @@ class QueueManager:
                         await bot.send_document(
                             chat_id=user_id,
                             document=open(file_path, 'rb'),
-                            caption=caption,
-                            parse_mode='Markdown'
-                        )
-                    elif file_ext in ['MP3', 'WAV', 'AAC', 'OGG'] and file_size < 50 * 1024 * 1024:
-                        # Audio files under 50MB
-                        await bot.send_audio(
-                            chat_id=user_id,
-                            audio=open(file_path, 'rb'),
                             caption=caption,
                             parse_mode='Markdown'
                         )
@@ -323,16 +337,26 @@ class QueueManager:
                         )
                     except Exception as doc_error:
                         logger.error(f"Document fallback failed: {doc_error}")
-                        # Last resort - send success message without file
+                        # If even document fails, the file might be corrupted or too large
+                        # Try to get more info about the file
+                        file_info = f"Format: {file_ext}, Size: {formatted_size}"
+                        if not os.path.exists(file_path):
+                            file_info += ", File not found"
+                        elif os.path.getsize(file_path) == 0:
+                            file_info += ", File is empty"
+                        
                         await bot.send_message(
                             chat_id=user_id,
                             text=f"✅ *Conversion Complete!*\n\n"
                                  f"📁 *File:* {os.path.basename(file_path)}\n"
-                                 f"📊 *Size:* {formatted_size}\n"
-                                 f"🎯 *Format:* {file_ext}\n\n"
+                                 f"{file_info}\n\n"
                                  f"⚠️ *Could not send file via Telegram*\n"
-                                 f"The file was converted successfully but couldn't be delivered. "
-                                 f"This is rare - please try converting a smaller file or contact support.",
+                                 f"The file was converted successfully but couldn't be delivered.\n\n"
+                                 f"💡 *Possible solutions:*\n"
+                                 f"• Try converting to a different format\n"
+                                 f"• The file might be too large for Telegram\n"
+                                 f"• Try a smaller input file\n"
+                                 f"• Contact support if this persists",
                             parse_mode='Markdown'
                         )
             else:
