@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from database import db
-from utils.keyboard_utils import get_main_menu_keyboard
+from utils.keyboard_utils import get_main_menu_keyboard, get_persistent_menu_keyboard
 
 async def is_user_banned(user_id):
     """Check if user is banned"""
@@ -43,7 +43,14 @@ async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(history) > 10:
         history_text += f"... and {len(history) - 10} more conversions"
     
-    await update.message.reply_text(history_text, parse_mode='Markdown')
+    # Add persistent menu at the end
+    history_text += "\n---\n*What would you like to do next?*"
+    
+    await update.message.reply_text(
+        history_text, 
+        parse_mode='Markdown',
+        reply_markup=get_persistent_menu_keyboard()
+    )
 
 async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle history callback from inline keyboard"""
@@ -66,8 +73,8 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
     
     if not history:
         await query.edit_message_text(
-            "📊 You haven't done any conversions yet!",
-            reply_markup=get_main_menu_keyboard(user_id)
+            "📊 You haven't done any conversions yet!\n\nWhat would you like to do?",
+            reply_markup=get_persistent_menu_keyboard()
         )
         return
     
@@ -86,8 +93,11 @@ async def handle_history_callback(update: Update, context: ContextTypes.DEFAULT_
         status_emoji = "✅" if item['success'] else "❌"
         history_text += f"{i+1}. {status_emoji} {item['input_type']} → {item['output_type']}\n"
     
+    # Add persistent menu
+    history_text += "\n---\n*What would you like to do next?*"
+    
     await query.edit_message_text(
         history_text,
-        reply_markup=get_main_menu_keyboard(user_id),
+        reply_markup=get_persistent_menu_keyboard(),
         parse_mode='Markdown'
     )

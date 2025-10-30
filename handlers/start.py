@@ -11,7 +11,10 @@ from utils.keyboard_utils import (
     get_video_conversion_keyboard,
     get_presentation_conversion_keyboard,
     get_format_suggestions_keyboard,
-    get_admin_keyboard
+    get_admin_keyboard,
+    get_persistent_menu_keyboard,
+    get_conversion_complete_keyboard,
+    get_upload_prompt_keyboard
 )
 import logging
 import os
@@ -165,7 +168,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_admin_callback(update, context)
         return
     
-    # Rest of callback handling
+    # Handle persistent menu callbacks
+    if callback_data == "convert_another":
+        await show_convert_another_menu(query, user_id)
+        return
+    elif callback_data == "convert_file":
+        await show_upload_prompt(query)
+        return
+    
+    # Rest of existing callback handling
     if callback_data == "main_menu":
         await show_main_menu(query, user_id)
     elif callback_data == "commands":
@@ -212,13 +223,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif callback_data == "history":
         from handlers.history import handle_history_callback
         await handle_history_callback(update, context)
-    elif callback_data == "convert_file":
-        # This is the main convert file button - show upload prompt
-        await query.edit_message_text(
-            "📁 *File Upload*\n\nPlease upload any file you want to convert.\n\n"
-            "I'll automatically detect the file type and show you all available conversion options!",
-            parse_mode='Markdown'
-        )
     elif callback_data == "browse_formats":
         await show_commands_menu(query, user_id)
     elif callback_data == "none":
@@ -231,17 +235,13 @@ async def show_main_menu(query, user_id):
     menu_text = """
 🏠 *Main Menu*
 
-Choose a category to convert files:
+*Continuous File Conversion Bot*
 
-📷 *Images* - PNG, JPG, JPEG, BMP, GIF (20+ conversions)
-🔊 *Audio* - MP3, WAV, AAC (6 conversions)  
-📹 *Video* - MP4, AVI, MOV, MKV (12 conversions)
-💼 *Documents* - PDF, DOCX, TXT, XLSX, ODT (12 conversions)
-🖼 *Presentations* - PPTX, PPT (3 conversions)
+📁 **Upload any file** → Get automatic conversion suggestions
+🔄 **Convert multiple files** without restarting
+📊 **Track your history** of all conversions
 
-*Total: 53+ reliable conversions!*
-
-*Or simply upload any file for automatic detection!*
+*Choose a category or simply upload any file:*
 """
     
     await query.edit_message_text(
@@ -324,6 +324,53 @@ Use the buttons below to manage the system:
     await query.edit_message_text(
         admin_text,
         reply_markup=get_admin_keyboard(),
+        parse_mode='Markdown'
+    )
+
+# ========== PERSISTENT MENU FUNCTIONS ==========
+
+async def show_convert_another_menu(query, user_id):
+    """Show menu for converting another file"""
+    # Clear any existing context data
+    if hasattr(query, '_bot_data') and query._bot_data:
+        query._bot_data.clear()
+    
+    menu_text = """
+🔄 *Convert Another File*
+
+Choose how you'd like to continue:
+
+• *Upload File* - Send any file for automatic conversion
+• *Browse Categories* - Choose from specific format categories
+• *Main Menu* - Return to the main menu
+
+*Your previous conversion context has been cleared.*
+"""
+    
+    await query.edit_message_text(
+        menu_text,
+        reply_markup=get_persistent_menu_keyboard(),
+        parse_mode='Markdown'
+    )
+
+async def show_upload_prompt(query):
+    """Show upload prompt with persistent menu"""
+    upload_text = """
+📁 *File Upload*
+
+Please upload any file you want to convert.
+
+I'll automatically:
+• Detect the file type
+• Show all available conversion options
+• Process it with professional quality
+
+*Supported formats:* Images, Audio, Video, Documents, Presentations
+"""
+    
+    await query.edit_message_text(
+        upload_text,
+        reply_markup=get_upload_prompt_keyboard(),
         parse_mode='Markdown'
     )
 

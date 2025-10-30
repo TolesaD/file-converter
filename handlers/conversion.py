@@ -5,7 +5,12 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from database import db
 from queue_manager import queue_manager
-from utils.keyboard_utils import get_main_menu_keyboard, get_format_suggestions_keyboard
+from utils.keyboard_utils import (
+    get_main_menu_keyboard, 
+    get_format_suggestions_keyboard,
+    get_conversion_complete_keyboard,
+    get_persistent_menu_keyboard
+)
 from handlers.start import detect_file_type
 from config import Config
 import logging
@@ -226,7 +231,7 @@ async def process_file_directly(update, context, input_path, file_extension, use
         elif hasattr(update, 'edit_message_text'):
             await update.edit_message_text(queue_message, parse_mode='Markdown')
         
-        # Clear conversion data
+        # Clear conversion data but keep user context
         context.user_data.pop('conversion_type', None)
         context.user_data.pop('output_format', None)
         context.user_data.pop('file_type', None)
@@ -241,9 +246,9 @@ async def process_file_directly(update, context, input_path, file_extension, use
         error_message = f"❌ Error processing file: {str(e)}"
         
         if hasattr(update, 'message') and update.message:
-            await update.message.reply_text(error_message)
+            await update.message.reply_text(error_message, reply_markup=get_conversion_complete_keyboard())
         elif hasattr(update, 'edit_message_text'):
-            await update.edit_message_text(error_message)
+            await update.edit_message_text(error_message, reply_markup=get_conversion_complete_keyboard())
         
         # Cleanup on error
         if os.path.exists(input_path):
@@ -251,3 +256,59 @@ async def process_file_directly(update, context, input_path, file_extension, use
                 os.remove(input_path)
             except:
                 pass
+
+async def send_conversion_success_message(context, user_id, original_filename, target_format, output_path):
+    """Send success message with persistent menu after conversion"""
+    try:
+        # Get file size for the output file
+        output_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        output_size_mb = output_size // (1024 * 1024) if output_size > 0 else 0
+        
+        success_text = f"""
+✅ *Conversion Complete!*
+
+📁 Original: `{original_filename}`
+🎯 Target: `{target_format.upper()}`
+📊 Output Size: {output_size_mb} MB
+⚡ Status: Success
+
+What would you like to do next?
+"""
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=success_text,
+            reply_markup=get_conversion_complete_keyboard(),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error sending success message: {e}")
+
+async def send_conversion_failed_message(context, user_id, error_message=None):
+    """Send failure message with persistent menu"""
+    try:
+        error_text = """
+❌ *Conversion Failed*
+
+The conversion couldn't be completed. 
+
+What would you like to do next?
+"""
+        if error_message:
+            error_text = f"""
+❌ *Conversion Failed*
+
+Error: {error_message}
+
+What would you like to do next?
+"""
+        
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=error_text,
+            reply_markup=get_conversion_complete_keyboard(),
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error sending failure message: {e}")
