@@ -4,7 +4,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 import logging
-import html
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -69,16 +68,11 @@ class UniversalConverter:
         try:
             from PIL import Image, ImageSequence
             
-            # Create proper output path with correct extension
-            base_name = os.path.splitext(input_path)[0]
-            output_path = f"{base_name}_converted.{output_format}"
-            
-            logger.info(f"Image conversion: {input_extension} -> {output_format}")
-            logger.info(f"Output path: {output_path}")
+            output_path = input_path.rsplit('.', 1)[0] + f'.{output_format}'
             
             # Handle GIF conversions specially
-            if input_extension.lower() == 'gif':
-                return await self._convert_gif_to_static(input_path, output_path, output_format)
+            if input_extension == 'gif' or output_format == 'gif':
+                return await self._convert_gif_advanced(input_path, output_path, input_extension, output_format)
             
             with Image.open(input_path) as img:
                 # Handle format-specific conversions with professional settings
@@ -103,9 +97,6 @@ class UniversalConverter:
                     # High quality PNG with optimization
                     if img.mode == 'P':
                         img = img.convert('RGBA')
-                    elif img.mode == 'RGB':
-                        # Ensure PNG maintains transparency capability
-                        img = img.convert('RGBA')
                     img.save(output_path, 'PNG', optimize=True)
                     
                 elif output_format == 'bmp':
@@ -117,19 +108,11 @@ class UniversalConverter:
                 elif output_format == 'pdf':
                     # Professional image to PDF conversion
                     return await self._image_to_pdf_advanced(input_path, output_path)
-                elif output_format == 'gif':
-                    # Convert to animated GIF
-                    return await self._convert_to_animated_gif(input_path, output_path, input_extension)
                 else:
                     # Fallback for other formats
                     img.save(output_path, format=output_format.upper())
                 
-                # Verify the output file was created with correct format
-                if os.path.exists(output_path):
-                    logger.info(f"Image conversion successful: {output_path}")
-                    return output_path
-                else:
-                    raise Exception("Output file was not created")
+                return output_path
                 
         except Exception as e:
             logger.error(f"Image conversion error: {e}")
@@ -141,7 +124,7 @@ class UniversalConverter:
             from PIL import Image, ImageSequence, ImageEnhance
             
             # Handle GIF to other formats conversion
-            if input_ext.lower() == 'gif' and output_format != 'gif':
+            if input_ext == 'gif' and output_format != 'gif':
                 return await self._convert_gif_to_static(input_path, output_path, output_format)
             
             # Handle other formats to GIF conversion
@@ -177,8 +160,6 @@ class UniversalConverter:
                     
                 elif output_format == 'png':
                     if first_frame.mode == 'P':
-                        first_frame = first_frame.convert('RGBA')
-                    elif first_frame.mode == 'RGB':
                         first_frame = first_frame.convert('RGBA')
                     first_frame.save(output_path, 'PNG', optimize=True)
                     
@@ -225,7 +206,7 @@ class UniversalConverter:
                     img = img.convert('RGB')
                 
                 frames = []
-                total_frames = 10  # Reduced frames for better performance
+                total_frames = 15  # Reduced frames for better performance
                 base_duration = 150  # Base duration in ms
                 
                 # Create different variations for animation
@@ -245,7 +226,7 @@ class UniversalConverter:
                     frames.append(frame)
                 
                 # Calculate optimized duration
-                total_duration = 2000  # 2 seconds total
+                total_duration = 3000  # 3 seconds total
                 frame_duration = total_duration // len(frames)
                 
                 # Save as optimized animated GIF
@@ -647,8 +628,6 @@ class UniversalConverter:
                     return await self._text_to_pdf_advanced(input_path, output_path)
                 elif output_format == 'docx':
                     return await self._text_to_docx_advanced(input_path, output_path)
-                elif output_format == 'xlsx':
-                    return await self._text_to_excel_advanced(input_path, output_path)
             
             # Word document conversions
             elif input_extension == 'docx':
@@ -656,17 +635,11 @@ class UniversalConverter:
                     return await self._docx_to_pdf_advanced(input_path, output_path)
                 elif output_format == 'txt':
                     return await self._docx_to_text_advanced(input_path, output_path)
-                elif output_format == 'xlsx':
-                    return await self._docx_to_excel_advanced(input_path, output_path)
             
             # Excel conversions
             elif input_extension == 'xlsx':
                 if output_format == 'pdf':
                     return await self._excel_to_pdf_advanced(input_path, output_path)
-                elif output_format == 'txt':
-                    return await self._excel_to_text_advanced(input_path, output_path)
-                elif output_format == 'docx':
-                    return await self._excel_to_docx_advanced(input_path, output_path)
             
             # ODT conversions
             elif input_extension == 'odt':
@@ -760,7 +733,7 @@ class UniversalConverter:
             raise Exception(f"Advanced PDF to DOCX conversion failed: {str(e)}")
     
     async def _pdf_to_excel_advanced(self, input_path, output_path):
-        """Advanced PDF to Excel conversion with table detection - ALL PAGES"""
+        """Advanced PDF to Excel conversion with table detection"""
         try:
             import fitz
             import pandas as pd
@@ -773,34 +746,21 @@ class UniversalConverter:
                 for page_num, page in enumerate(pdf.pages):
                     tables = page.extract_tables()
                     for table_num, table in enumerate(tables):
-                        if table:  # Process all tables, even single row ones
-                            # Clean the table data
-                            cleaned_table = []
-                            for row in table:
-                                cleaned_row = [str(cell).strip() if cell is not None else "" for cell in row]
-                                cleaned_table.append(cleaned_row)
-                            
-                            if cleaned_table:
-                                # Use first row as header if we have multiple rows, otherwise create simple header
-                                if len(cleaned_table) > 1:
-                                    df = pd.DataFrame(cleaned_table[1:], columns=cleaned_table[0])
-                                else:
-                                    df = pd.DataFrame(cleaned_table, columns=[f"Column_{i+1}" for i in range(len(cleaned_table[0]))])
-                                
-                                all_data.append((f"Page_{page_num+1}_Table_{table_num+1}", df))
+                        if table and len(table) > 1:  # At least header and one row
+                            df = pd.DataFrame(table[1:], columns=table[0])
+                            all_data.append((f"Page_{page_num+1}_Table_{table_num+1}", df))
             
-            # If no tables found, extract text from all pages
+            # If no tables found, extract text
             if not all_data:
                 doc = fitz.open(input_path)
                 for page_num in range(len(doc)):
                     page = doc.load_page(page_num)
                     text = page.get_text()
                     if text.strip():
-                        # Create a simple DataFrame from text lines
+                        # Create a simple DataFrame from text
                         lines = [line.strip() for line in text.split('\n') if line.strip()]
-                        if lines:
-                            df = pd.DataFrame(lines, columns=[f"Content_Page_{page_num+1}"])
-                            all_data.append((f"Page_{page_num+1}", df))
+                        df = pd.DataFrame(lines, columns=[f"Content_Page_{page_num+1}"])
+                        all_data.append((f"Page_{page_num+1}", df))
                 doc.close()
             
             if all_data:
@@ -811,7 +771,6 @@ class UniversalConverter:
                         sheet_name = sheet_name[:31]
                         df.to_excel(writer, sheet_name=sheet_name, index=False)
                 
-                logger.info(f"PDF to Excel conversion successful. Created {len(all_data)} sheets.")
                 return output_path
             else:
                 raise Exception("No extractable content found in PDF")
@@ -820,7 +779,7 @@ class UniversalConverter:
             raise Exception(f"Advanced PDF to Excel conversion failed: {str(e)}")
     
     async def _text_to_pdf_advanced(self, input_path, output_path):
-        """Advanced text to PDF conversion with professional formatting - FIXED HTML ISSUE"""
+        """Advanced text to PDF conversion with professional formatting"""
         try:
             from reportlab.pdfgen import canvas
             from reportlab.lib.pagesizes import letter, A4
@@ -847,7 +806,7 @@ class UniversalConverter:
             styles = getSampleStyleSheet()
             story = []
             
-            # Custom style for better readability - SIMPLIFIED to avoid HTML parsing issues
+            # Custom style for better readability
             custom_style = ParagraphStyle(
                 'Custom',
                 parent=styles['Normal'],
@@ -856,13 +815,11 @@ class UniversalConverter:
                 spaceAfter=12
             )
             
-            # Split text into paragraphs and add to story - WITH HTML ESCAPING
+            # Split text into paragraphs and add to story
             paragraphs = text_content.split('\n')
             for para in paragraphs:
                 if para.strip():
-                    # Escape HTML characters to prevent parsing issues
-                    clean_para = html.escape(para.strip())
-                    story.append(Paragraph(clean_para, custom_style))
+                    story.append(Paragraph(para.strip(), custom_style))
                     story.append(Spacer(1, 12))
             
             if story:
@@ -872,70 +829,13 @@ class UniversalConverter:
                 raise Exception("No content to convert")
                 
         except Exception as e:
-            logger.error(f"Text to PDF conversion error: {e}")
-            # Fallback to simple canvas method
-            try:
-                return await self._text_to_pdf_simple(input_path, output_path)
-            except Exception as fallback_error:
-                raise Exception(f"Advanced text to PDF conversion failed: {str(e)}")
-    
-    async def _text_to_pdf_simple(self, input_path, output_path):
-        """Simple text to PDF conversion as fallback"""
-        try:
-            from reportlab.pdfgen import canvas
-            from reportlab.lib.pagesizes import letter
-            
-            # Read text content
-            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
-                text_content = f.read()
-            
-            c = canvas.Canvas(output_path, pagesize=letter)
-            width, height = letter
-            
-            # Set up text parameters
-            y_position = height - 72  # Start from top with margin
-            line_height = 14
-            left_margin = 72
-            
-            # Split text into lines
-            lines = []
-            for paragraph in text_content.split('\n'):
-                if paragraph.strip():
-                    words = paragraph.split()
-                    current_line = []
-                    for word in words:
-                        test_line = ' '.join(current_line + [word])
-                        if c.stringWidth(test_line, "Helvetica", 10) < (width - 2 * left_margin):
-                            current_line.append(word)
-                        else:
-                            if current_line:
-                                lines.append(' '.join(current_line))
-                            current_line = [word]
-                    if current_line:
-                        lines.append(' '.join(current_line))
-                    lines.append('')  # Empty line between paragraphs
-            
-            # Draw text on canvas
-            for line in lines:
-                if y_position < 72:  # Bottom margin
-                    c.showPage()
-                    y_position = height - 72
-                
-                if line.strip():  # Only draw non-empty lines
-                    c.drawString(left_margin, y_position, line)
-                y_position -= line_height
-            
-            c.save()
-            return output_path
-            
-        except Exception as e:
-            raise Exception(f"Simple text to PDF conversion also failed: {str(e)}")
+            raise Exception(f"Advanced text to PDF conversion failed: {str(e)}")
     
     async def _text_to_docx_advanced(self, input_path, output_path):
         """Advanced text to DOCX conversion"""
         try:
             from docx import Document
-            from docx.shared import Pt
+            from docx.shared import Pt  # Fixed import
             
             with open(input_path, 'r', encoding='utf-8') as f:
                 text_content = f.read()
@@ -945,39 +845,20 @@ class UniversalConverter:
             # Add professional styling
             style = doc.styles['Normal']
             style.font.name = 'Arial'
-            style.font.size = Pt(11)
+            style.font.size = Pt(11)  # Fixed: Use Pt directly
             
             # Add content with proper paragraph formatting
             paragraphs = text_content.split('\n')
             for para in paragraphs:
                 if para.strip():
                     p = doc.add_paragraph(para.strip())
-                    p.paragraph_format.space_after = Pt(6)
+                    p.paragraph_format.space_after = Pt(6)  # Fixed: Use Pt directly
             
             doc.save(output_path)
             return output_path
             
         except Exception as e:
             raise Exception(f"Advanced text to DOCX conversion failed: {str(e)}")
-    
-    async def _text_to_excel_advanced(self, input_path, output_path):
-        """Convert text to Excel format"""
-        try:
-            import pandas as pd
-            
-            with open(input_path, 'r', encoding='utf-8') as f:
-                text_content = f.read()
-            
-            # Split text into lines and create DataFrame
-            lines = [line.strip() for line in text_content.split('\n') if line.strip()]
-            df = pd.DataFrame(lines, columns=['Content'])
-            
-            # Save to Excel
-            df.to_excel(output_path, index=False)
-            return output_path
-            
-        except Exception as e:
-            raise Exception(f"Text to Excel conversion failed: {str(e)}")
     
     async def _docx_to_pdf_advanced(self, input_path, output_path):
         """Advanced DOCX to PDF conversion using LibreOffice"""
@@ -1041,43 +922,6 @@ class UniversalConverter:
         except Exception as e:
             raise Exception(f"Advanced DOCX to text conversion failed: {str(e)}")
     
-    async def _docx_to_excel_advanced(self, input_path, output_path):
-        """Convert DOCX to Excel format"""
-        try:
-            from docx import Document
-            import pandas as pd
-            
-            doc = Document(input_path)
-            data = []
-            
-            # Extract paragraphs
-            for i, paragraph in enumerate(doc.paragraphs):
-                if paragraph.text.strip():
-                    data.append([f"Paragraph_{i+1}", paragraph.text.strip()])
-            
-            # Extract tables
-            for table_num, table in enumerate(doc.tables):
-                for row_num, row in enumerate(table.rows):
-                    row_data = []
-                    for cell in row.cells:
-                        row_data.append(cell.text.strip())
-                    if any(row_data):  # Only add non-empty rows
-                        data.append([f"Table_{table_num+1}_Row_{row_num+1}"] + row_data)
-            
-            if data:
-                # Create DataFrame with dynamic columns
-                max_cols = max(len(row) for row in data)
-                columns = ['Source'] + [f'Column_{i+1}' for i in range(max_cols - 1)]
-                
-                df = pd.DataFrame(data, columns=columns)
-                df.to_excel(output_path, index=False)
-                return output_path
-            else:
-                raise Exception("No content found in DOCX file")
-                
-        except Exception as e:
-            raise Exception(f"DOCX to Excel conversion failed: {str(e)}")
-    
     async def _excel_to_pdf_advanced(self, input_path, output_path):
         """Advanced Excel to PDF conversion"""
         try:
@@ -1101,76 +945,6 @@ class UniversalConverter:
                 
         except Exception as e:
             raise Exception(f"Advanced Excel to PDF conversion failed: {str(e)}")
-    
-    async def _excel_to_text_advanced(self, input_path, output_path):
-        """Convert Excel to text format"""
-        try:
-            import pandas as pd
-            
-            # Read all sheets
-            excel_file = pd.ExcelFile(input_path)
-            text_content = []
-            
-            for sheet_name in excel_file.sheet_names:
-                df = pd.read_excel(input_path, sheet_name=sheet_name)
-                text_content.append(f"--- Sheet: {sheet_name} ---")
-                
-                # Convert DataFrame to text
-                for _, row in df.iterrows():
-                    row_text = [str(cell) for cell in row if pd.notna(cell)]
-                    if row_text:
-                        text_content.append(" | ".join(row_text))
-                
-                text_content.append("")  # Empty line between sheets
-            
-            if text_content:
-                with open(output_path, 'w', encoding='utf-8') as f:
-                    f.write('\n'.join(text_content))
-                return output_path
-            else:
-                raise Exception("No data found in Excel file")
-                
-        except Exception as e:
-            raise Exception(f"Excel to text conversion failed: {str(e)}")
-    
-    async def _excel_to_docx_advanced(self, input_path, output_path):
-        """Convert Excel to DOCX format"""
-        try:
-            import pandas as pd
-            from docx import Document
-            from docx.shared import Inches
-            
-            doc = Document()
-            
-            # Read all sheets
-            excel_file = pd.ExcelFile(input_path)
-            
-            for sheet_name in excel_file.sheet_names:
-                df = pd.read_excel(input_path, sheet_name=sheet_name)
-                
-                # Add sheet title
-                doc.add_heading(f"Sheet: {sheet_name}", level=2)
-                
-                # Add table to document
-                if not df.empty:
-                    table = doc.add_table(rows=len(df)+1, cols=len(df.columns))
-                    
-                    # Add header row
-                    for col_idx, column in enumerate(df.columns):
-                        table.cell(0, col_idx).text = str(column)
-                    
-                    # Add data rows
-                    for row_idx, (_, row) in enumerate(df.iterrows(), 1):
-                        for col_idx, value in enumerate(row):
-                            table.cell(row_idx, col_idx).text = str(value) if pd.notna(value) else ""
-                
-                doc.add_paragraph()  # Add space between sheets
-            
-            doc.save(output_path)
-            return output_path
-            
-        except Exception as e:
-            raise Exception(f"Excel to DOCX conversion failed: {str(e)}")
     
     async def _odt_to_pdf_advanced(self, input_path, output_path):
         """Advanced ODT to PDF conversion"""

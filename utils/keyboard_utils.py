@@ -2,9 +2,9 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import Config
 from converters.converter_router import converter_router
 import asyncio
-import logging
+import logging  # ADD THIS IMPORT
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)  # ADD THIS LINE
 
 def get_main_menu_keyboard(user_id):
     """Get main menu keyboard"""
@@ -247,43 +247,5 @@ def get_cancel_keyboard():
     """Get cancel operation keyboard"""
     keyboard = [
         [InlineKeyboardButton("❌ Cancel", callback_data="admin_panel")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-# ========== PERSISTENT MENU KEYBOARDS ==========
-
-def get_persistent_menu_keyboard():
-    """Get persistent menu that appears after conversions"""
-    keyboard = [
-        [InlineKeyboardButton("🔄 Convert Another File", callback_data="convert_another")],
-        [InlineKeyboardButton("📁 Browse Categories", callback_data="commands")],
-        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
-        [InlineKeyboardButton("📊 History", callback_data="history")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_conversion_complete_keyboard():
-    """Keyboard shown after successful conversion"""
-    keyboard = [
-        [InlineKeyboardButton("🔄 Convert Another File", callback_data="convert_another")],
-        [InlineKeyboardButton("📁 Upload New File", callback_data="convert_file")],
-        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_upload_prompt_keyboard():
-    """Keyboard shown when prompting for file upload"""
-    keyboard = [
-        [InlineKeyboardButton("📁 Upload File", callback_data="convert_file")],
-        [InlineKeyboardButton("🔙 Back to Categories", callback_data="commands")],
-        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_after_upload_keyboard():
-    """Keyboard shown after file upload with conversion options"""
-    keyboard = [
-        [InlineKeyboardButton("🔄 Convert Another", callback_data="convert_another")],
-        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
     ]
     return InlineKeyboardMarkup(keyboard)
