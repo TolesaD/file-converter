@@ -1,20 +1,8 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import db
-from config import Config
-from utils.keyboard_utils import (
-    get_main_menu_keyboard, 
-    get_commands_keyboard,
-    get_document_conversion_keyboard,
-    get_image_conversion_keyboard,
-    get_audio_conversion_keyboard,
-    get_video_conversion_keyboard,
-    get_presentation_conversion_keyboard,
-    get_format_suggestions_keyboard,
-    get_admin_keyboard
-)
+from utils.keyboard_utils import get_main_menu_keyboard
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +12,7 @@ async def is_user_banned(user_id):
     return user and user['is_banned']
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send welcome message and main menu"""
+    """Handle the /start command"""
     user = update.effective_user
     user_id = user.id
     
@@ -38,32 +26,33 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Clear any existing context data
-    context.user_data.clear()
-    
     # Add user to database
-    db.add_user(user_id, user.username, user.first_name, user.last_name)
+    db.add_user(
+        user_id=user_id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name
+    )
     
-    welcome_text = f"""
-👋 Welcome *{user.first_name}* to the *World-Class File Converter Bot*!
+    welcome_text = """
+🤖 *Welcome to Professional File Converter Bot!*
 
-*Professional Features:*
-• 🎯 High-quality professional conversions
-• 🧠 Smart file type detection  
-• ⚡ Fast multi-format support
-• 📊 Real-time progress updates
-• 🏆 Professional-grade output quality
+I can convert your files between various formats with high quality and accuracy.
 
-*Supported Categories:*
-📷 Images: PNG, JPG, JPEG, BMP, GIF (20+ professional conversions)
-🔊 Audio: MP3, WAV, AAC (6 high-quality conversions)
-📹 Video: MP4, AVI, MOV, MKV (12 professional conversions)
-💼 Documents: PDF, DOCX, TXT, XLSX, ODT (12 accurate conversions)
-🖼 Presentations: PPTX, PPT (3 professional conversions)
+📁 *Supported Conversions:*
+• 📷 Images (PNG, JPG, JPEG, BMP, GIF)
+• 🔊 Audio (MP3, WAV, AAC)  
+• 📹 Video (MP4, AVI, MOV, MKV)
+• 💼 Documents (PDF, DOCX, TXT, XLSX, ODT)
+• 🖼 Presentations (PPTX, PPT)
 
-*Total: 53+ professional-grade conversions!*
+✨ *Features:*
+• High quality conversions
+• Fast processing
+• Support for large files
+• Multiple format options
 
-*Simply upload any file for automatic professional conversion!*
+Use the buttons below to get started! 🚀
 """
     
     await update.message.reply_text(
@@ -73,76 +62,78 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send help information"""
-    user_id = update.effective_user.id
-    
-    # Check if user is banned
-    if await is_user_banned(user_id):
-        await update.message.reply_text("🚫 Your account has been banned.")
-        return
-    
-    is_admin = user_id in Config.ADMIN_IDS
+    """Handle the /help command"""
+    user = update.effective_user
     
     help_text = """
-🤖 *How to use this bot:*
+📖 *File Converter Bot Help*
 
-1. *Upload any file* - I'll automatically detect its type
-2. *Choose from suggestions* - See all possible conversions
-3. *Or use menus* - Browse specific conversion types
-4. *Wait for processing* - Real-time progress updates
-5. *Download result* - Get your converted file
+*How to use:*
+1. Click *"Convert File"* or choose a specific category
+2. Select the conversion type you want
+3. Upload your file when prompted
+4. Wait for processing
+5. Download your converted file
 
-📁 *Smart Detection Supported:*
-• Upload any file → Get automatic conversion suggestions
-• Or use category menus for specific conversions
+*Supported Formats:*
 
-⚡ *Tips:*
-• Multiple files processed simultaneously
-• Conversion history saved
-• Queue system for fair processing
+*📷 Images:* PNG, JPG, JPEG, BMP, GIF
+*🔊 Audio:* MP3, WAV, AAC
+*📹 Video:* MP4, AVI, MOV, MKV  
+*💼 Documents:* PDF, DOCX, TXT, XLSX, ODT
+*🖼 Presentations:* PPTX, PPT
 
-🔧 *Available Commands:*
-• /start - Start bot
-• /help - This help
-• /history - Your conversions
+*Tips:*
+• Files are automatically deleted after 24 hours
+• Maximum file size: 2GB
+• Conversion time depends on file size and type
+
+Need help? Contact the administrator.
 """
     
-    # Only show admin commands to admins
-    if is_admin:
-        help_text += "• /stats - System stats (admin)\n• /admin - Admin panel (admin)"
-    
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+    await update.message.reply_text(
+        help_text,
+        reply_markup=get_main_menu_keyboard(user.id),
+        parse_mode='Markdown'
+    )
 
-async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show user history - accessible to all users"""
-    user_id = update.effective_user.id
+def detect_file_type(file_extension):
+    """Detect file type from extension"""
+    file_extension = file_extension.lower().lstrip('.')
     
-    # Check if user is banned
-    if await is_user_banned(user_id):
-        await update.message.reply_text("🚫 Your account has been banned.")
-        return
+    # Map extensions to categories
+    image_formats = ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp']
+    audio_formats = ['mp3', 'wav', 'aac', 'ogg', 'flac']
+    video_formats = ['mp4', 'avi', 'mov', 'mkv', 'webm', 'flv']
+    document_formats = ['pdf', 'docx', 'doc', 'txt', 'xlsx', 'xls', 'odt', 'rtf']
+    presentation_formats = ['pptx', 'ppt', 'odp']
     
-    from handlers.history import show_history as show_user_history
-    await show_user_history(update, context)
+    if file_extension in image_formats:
+        return 'image', 'Image'
+    elif file_extension in audio_formats:
+        return 'audio', 'Audio'
+    elif file_extension in video_formats:
+        # Special handling for GIF - it should be treated as image, not video
+        if file_extension == 'gif':
+            return 'image', 'Image (GIF)'
+        return 'video', 'Video'
+    elif file_extension in document_formats:
+        return 'document', 'Document'
+    elif file_extension in presentation_formats:
+        return 'presentation', 'Presentation'
+    else:
+        return 'unknown', 'Unknown'
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle inline keyboard callbacks"""
+    """Handle all callback queries"""
     query = update.callback_query
     await query.answer()
     
-    callback_data = query.data
     user_id = query.from_user.id
+    callback_data = query.data
     
-    # Check if user is banned (except for admin callbacks)
-    admin_callbacks = ["admin_stats", "admin_stats_live", "admin_stats_daily", 
-                      "admin_stats_users", "admin_stats_formats", "admin_users",
-                      "admin_broadcast", "admin_reports", "admin_refresh", "admin_panel",
-                      "admin_view_users", "admin_banned_users", "broadcast_confirm",
-                      "admin_view_user_", "admin_ban_user_", "admin_unban_user_", "admin_back_to_users"]
-    
-    is_admin_callback = any(callback_data.startswith(cb) for cb in admin_callbacks) or callback_data in admin_callbacks
-    
-    if not is_admin_callback and await is_user_banned(user_id):
+    # Check if user is banned
+    if await is_user_banned(user_id):
         await query.edit_message_text(
             "🚫 *Account Banned*\n\n"
             "Your account has been banned from using this bot. "
@@ -151,268 +142,217 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    is_admin = user_id in Config.ADMIN_IDS
+    logger.info(f"Callback from user {user_id}: {callback_data}")
     
-    logger.info(f"Callback received: {callback_data} from user {user_id}")
-    
-    # Handle admin-only callbacks
-    if is_admin_callback:
-        if not is_admin:
-            await query.edit_message_text("❌ Access denied. Admin only.")
-            return
-        # Route to admin handler
-        from handlers.admin import handle_admin_callback
-        await handle_admin_callback(update, context)
+    # Handle main menu navigation
+    if callback_data == "main_menu":
+        await show_main_menu(query)
         return
     
-    # Rest of callback handling
-    if callback_data == "main_menu":
-        await show_main_menu(query, user_id)
-    elif callback_data == "commands":
-        await show_commands_menu(query, user_id)
-    elif callback_data == "menu_documents":
-        await show_document_menu(query)
-    elif callback_data == "menu_images":
-        await show_image_menu(query)
-    elif callback_data == "menu_audio":
-        await show_audio_menu(query)
-    elif callback_data == "menu_video":
-        await show_video_menu(query)
-    elif callback_data == "menu_presentations":
-        await show_presentation_menu(query)
-    elif callback_data.startswith("convert_doc_"):
-        parts = callback_data.replace("convert_doc_", "").split("_")
-        if len(parts) == 2:
-            await start_auto_conversion(query, context, parts[0], parts[1], 'document')
-    elif callback_data.startswith("convert_img_"):
-        parts = callback_data.replace("convert_img_", "").split("_")
-        if len(parts) == 2:
-            await start_auto_conversion(query, context, parts[0], parts[1], 'image')
-    elif callback_data.startswith("convert_audio_"):
-        parts = callback_data.replace("convert_audio_", "").split("_")
-        if len(parts) == 2:
-            await start_auto_conversion(query, context, parts[0], parts[1], 'audio')
-    elif callback_data.startswith("convert_video_"):
-        parts = callback_data.replace("convert_video_", "").split("_")
-        if len(parts) == 2:
-            await start_auto_conversion(query, context, parts[0], parts[1], 'video')
-    elif callback_data.startswith("convert_presentation_"):
-        parts = callback_data.replace("convert_presentation_", "").split("_")
-        if len(parts) == 2:
-            await start_auto_conversion(query, context, parts[0], parts[1], 'presentation')
-    elif callback_data.startswith("auto_convert_"):
-        # Handle smart conversion suggestions from direct uploads
-        parts = callback_data.replace("auto_convert_", "").split("_")
-        if len(parts) == 2:
-            source_format, target_format = parts
-            file_type, _ = detect_file_type(source_format)
-            await start_auto_conversion(query, context, source_format, target_format, file_type)
-    elif callback_data == "admin_panel":
-        await show_admin_panel(query, user_id)
-    elif callback_data == "history":
-        from handlers.history import handle_history_callback
-        await handle_history_callback(update, context)
+    # Handle conversion category selection
     elif callback_data == "convert_file":
-        # This is the main convert file button - show upload prompt
         await query.edit_message_text(
-            "📁 *File Upload*\n\nPlease upload any file you want to convert.\n\n"
-            "I'll automatically detect the file type and show you all available conversion options!",
+            "📁 *Choose File Category*\n\nSelect the type of file you want to convert:",
+            reply_markup=get_conversion_categories_keyboard(),
             parse_mode='Markdown'
         )
-    elif callback_data == "browse_formats":
-        await show_commands_menu(query, user_id)
-    elif callback_data == "none":
-        pass
-    else:
-        logger.warning(f"Unhandled callback: {callback_data}")
-
-async def show_main_menu(query, user_id):
-    """Show main menu with simplified categories"""
-    menu_text = """
-🏠 *Main Menu*
-
-Choose a category to convert files:
-
-📷 *Images* - PNG, JPG, JPEG, BMP, GIF (20+ conversions)
-🔊 *Audio* - MP3, WAV, AAC (6 conversions)  
-📹 *Video* - MP4, AVI, MOV, MKV (12 conversions)
-💼 *Documents* - PDF, DOCX, TXT, XLSX, ODT (12 conversions)
-🖼 *Presentations* - PPTX, PPT (3 conversions)
-
-*Total: 53+ reliable conversions!*
-
-*Or simply upload any file for automatic detection!*
-"""
-    
-    await query.edit_message_text(
-        menu_text,
-        reply_markup=get_main_menu_keyboard(user_id),
-        parse_mode='Markdown'
-    )
-
-async def show_commands_menu(query, user_id):
-    commands_text = "📋 *Available Commands*\n\nUse these commands in the chat:"
-    
-    # For admins, show admin commands in the text
-    if user_id in Config.ADMIN_IDS:
-        commands_text += "\n\n👑 *Admin Commands:*\n• /stats - System statistics\n• /admin - Admin panel"
-    
-    await query.edit_message_text(
-        commands_text,
-        reply_markup=get_commands_keyboard(),
-        parse_mode='Markdown'
-    )
-
-async def show_document_menu(query):
-    """Show document conversion menu"""
-    await query.edit_message_text(
-        "💼 *Document Conversion*\n\nSupported formats: PDF, DOCX, TXT, XLSX, ODT\n\nChoose conversion type:",
-        reply_markup=get_document_conversion_keyboard(),
-        parse_mode='Markdown'
-    )
-
-async def show_image_menu(query):
-    """Show image conversion menu"""
-    await query.edit_message_text(
-        "📷 *Image Conversion*\n\nSupported formats: PNG, JPG, JPEG, BMP, GIF\n\nChoose conversion type:",
-        reply_markup=get_image_conversion_keyboard(),
-        parse_mode='Markdown'
-    )
-
-async def show_audio_menu(query):
-    """Show audio conversion menu"""
-    await query.edit_message_text(
-        "🔊 *Audio Conversion*\n\nSupported formats: MP3, WAV, AAC\n\nChoose conversion type:",
-        reply_markup=get_audio_conversion_keyboard(),
-        parse_mode='Markdown'
-    )
-
-async def show_video_menu(query):
-    """Show video conversion menu"""
-    await query.edit_message_text(
-        "📹 *Video Conversion*\n\nSupported formats: MP4, AVI, MOV, MKV\n\nChoose conversion type:",
-        reply_markup=get_video_conversion_keyboard(),
-        parse_mode='Markdown'
-    )
-
-async def show_presentation_menu(query):
-    """Show presentation conversion menu"""
-    await query.edit_message_text(
-        "🖼 *Presentation Conversion*\n\nSupported formats: PPTX, PPT\n\nChoose conversion type:",
-        reply_markup=get_presentation_conversion_keyboard(),
-        parse_mode='Markdown'
-    )
-
-async def show_admin_panel(query, user_id):
-    """Show admin panel only for admins"""
-    if user_id not in Config.ADMIN_IDS:
-        await query.edit_message_text("❌ Access denied. Admin only.")
         return
     
-    admin_text = """
-👑 *Admin Panel*
+    # Handle specific category menus
+    elif callback_data.startswith("menu_"):
+        await handle_category_menu(query, callback_data)
+        return
+    
+    # Handle conversion type selection
+    elif callback_data.startswith("convert_"):
+        await handle_conversion_selection(query, callback_data, context)
+        return
+    
+    # Handle auto-convert from suggestions
+    elif callback_data.startswith("auto_convert_"):
+        await handle_auto_convert(query, callback_data, context)
+        return
+    
+    # Handle history
+    elif callback_data == "history":
+        from handlers.history import show_history
+        await show_history(update, context)
+        return
+    
+    # Handle admin panel
+    elif callback_data == "admin_panel":
+        from handlers.admin import admin_panel
+        await admin_panel(update, context)
+        return
+    
+    # Default fallback
+    else:
+        await query.edit_message_text(
+            "❌ Unknown command. Please use the menu below:",
+            reply_markup=get_main_menu_keyboard(user_id)
+        )
 
-*Quick Actions:*
-• View real-time system statistics
-• Manage users and monitor activity
-• Send broadcast messages
-• Generate detailed reports
+async def show_main_menu(query):
+    """Show the main menu"""
+    welcome_text = """
+🤖 *Professional File Converter Bot*
 
-Use the buttons below to manage the system:
+Choose an option below to get started with file conversion:
 """
     
     await query.edit_message_text(
-        admin_text,
-        reply_markup=get_admin_keyboard(),
+        welcome_text,
+        reply_markup=get_main_menu_keyboard(query.from_user.id),
         parse_mode='Markdown'
     )
 
-async def start_auto_conversion(query, context, source_format, target_format, file_type=None):
-    """Start conversion from auto-detected file type"""
-    if not file_type:
-        file_type, _ = detect_file_type(source_format)
+def get_conversion_categories_keyboard():
+    """Get keyboard for conversion categories"""
+    keyboard = [
+        [InlineKeyboardButton("📷 Convert Images", callback_data="menu_images")],
+        [InlineKeyboardButton("🔊 Convert Audio", callback_data="menu_audio")],
+        [InlineKeyboardButton("📹 Convert Video", callback_data="menu_video")],
+        [InlineKeyboardButton("💼 Convert Documents", callback_data="menu_documents")],
+        [InlineKeyboardButton("🖼 Convert Presentations", callback_data="menu_presentations")],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+async def handle_category_menu(query, callback_data):
+    """Handle category menu selection"""
+    from utils.keyboard_utils import (
+        get_image_conversion_keyboard, 
+        get_audio_conversion_keyboard,
+        get_video_conversion_keyboard,
+        get_document_conversion_keyboard,
+        get_presentation_conversion_keyboard
+    )
     
-    # Store conversion details in context
-    context.user_data['conversion_type'] = f"auto_{source_format}_{target_format}"
-    context.user_data['input_format'] = source_format
-    context.user_data['output_format'] = target_format
-    context.user_data['file_type'] = file_type
+    category_map = {
+        "menu_images": ("📷 Image Conversion", get_image_conversion_keyboard),
+        "menu_audio": ("🔊 Audio Conversion", get_audio_conversion_keyboard),
+        "menu_video": ("📹 Video Conversion", get_video_conversion_keyboard),
+        "menu_documents": ("💼 Document Conversion", get_document_conversion_keyboard),
+        "menu_presentations": ("🖼 Presentation Conversion", get_presentation_conversion_keyboard)
+    }
     
-    logger.info(f"Starting auto conversion: {source_format} -> {target_format} (file_type: {file_type})")
-    
-    # Check if we already have a downloaded file from smart detection
-    if 'detected_file_info' in context.user_data:
-        file_info = context.user_data['detected_file_info']
+    if callback_data in category_map:
+        title, keyboard_func = category_map[callback_data]
+        await query.edit_message_text(
+            f"{title}\n\nSelect the conversion type:",
+            reply_markup=keyboard_func(),
+            parse_mode='Markdown'
+        )
+
+async def handle_conversion_selection(query, callback_data, context):
+    """Handle conversion type selection"""
+    try:
+        # Parse conversion type from callback data
+        # Format: convert_{category}_{input}_{output}
+        parts = callback_data.split('_')
         
-        # Verify the file still exists and matches the selected format
-        if os.path.exists(file_info['path']) and file_info['extension'].lower() == source_format.lower():
-            # We have a file ready to process!
-            message_text = f"""
-✅ *Smart Conversion Ready!*
+        if len(parts) >= 4:
+            category = parts[1]  # img, audio, video, doc, presentation
+            input_format = parts[2]  # png, jpg, pdf, etc.
+            output_format = parts[3]  # jpg, png, pdf, etc.
+            
+            # Map category to full name for display
+            category_names = {
+                'img': 'Image',
+                'audio': 'Audio', 
+                'video': 'Video',
+                'doc': 'Document',
+                'presentation': 'Presentation'
+            }
+            
+            category_name = category_names.get(category, 'File')
+            
+            # Store conversion info in context
+            context.user_data['conversion_type'] = f"{input_format}_to_{output_format}"
+            context.user_data['output_format'] = output_format
+            context.user_data['file_type'] = category
+            
+            # Show upload prompt with CONTINUE menu
+            upload_text = f"""
+🎯 *{category_name} Conversion Selected*
 
-📁 File: `{file_info['name']}`
-🔍 Type: {source_format.upper()} ({Config.FORMAT_CATEGORIES.get(file_type, '📁 File')})
-🎯 Target: {target_format.upper()}
+🔄 Conversion: `{input_format.upper()}` → `{output_format.upper()}`
 
-🔄 Starting conversion now...
+📤 Please upload your `{input_format.upper()}` file now.
+
+After conversion, you'll be able to convert another file without restarting!
 """
             
-            await query.edit_message_text(message_text, parse_mode='Markdown')
+            keyboard = [
+                [InlineKeyboardButton("📤 Upload File Now", callback_data="upload_now")],
+                [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
+            ]
             
-            # Import the conversion handler
-            from handlers.conversion import process_file_directly
+            await query.edit_message_text(
+                upload_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
             
-            # Process the file immediately
-            try:
-                await process_file_directly(query, context, file_info['path'], source_format, query.from_user.id)
-                
-                # Clear the detected file info after successful processing
-                context.user_data.pop('detected_file_info', None)
-                
-            except Exception as e:
-                logger.error(f"Error in immediate processing: {e}")
-                await query.edit_message_text(f"❌ Error starting conversion: {str(e)}")
         else:
-            # File doesn't exist or format doesn't match, ask for re-upload
-            context.user_data['expecting_followup_upload'] = True
-            message_text = f"""
-🧠 *Conversion Type Selected*
-
-📁 File Type: {source_format.upper()} 
-🎯 Target Format: {target_format.upper()}
-
-Please upload your {source_format.upper()} file to start conversion.
-"""
-            await query.edit_message_text(message_text, parse_mode='Markdown')
+            raise ValueError("Invalid callback data format")
             
-            # Clean up old file if it exists but doesn't match
-            if 'detected_file_info' in context.user_data:
-                old_file_info = context.user_data.pop('detected_file_info')
-                if os.path.exists(old_file_info['path']):
-                    try:
-                        os.remove(old_file_info['path'])
-                    except:
-                        pass
-    else:
-        # No file available, ask user to upload
-        context.user_data['expecting_followup_upload'] = True
-        message_text = f"""
-🧠 *Conversion Type Selected*
+    except Exception as e:
+        logger.error(f"Error handling conversion selection: {e}")
+        await query.edit_message_text(
+            "❌ Error processing your selection. Please try again.",
+            reply_markup=get_main_menu_keyboard(query.from_user.id)
+        )
 
-📁 File Type: {source_format.upper()} ({Config.FORMAT_CATEGORIES.get(file_type, '📁 File')})
-🎯 Target Format: {target_format.upper()}
-
-Please upload your {source_format.upper()} file to start conversion.
-"""
+async def handle_auto_convert(query, callback_data, context):
+    """Handle auto-convert from smart suggestions"""
+    try:
+        # Format: auto_convert_{input}_{output}
+        parts = callback_data.split('_')
         
-        await query.edit_message_text(message_text, parse_mode='Markdown')
+        if len(parts) >= 4:
+            input_format = parts[2]
+            output_format = parts[3]
+            
+            # Detect category from input format
+            file_type, category_name = detect_file_type(input_format)
+            
+            # Store conversion info in context
+            context.user_data['conversion_type'] = f"{input_format}_to_{output_format}"
+            context.user_data['output_format'] = output_format
+            context.user_data['file_type'] = file_type
+            
+            # Show upload prompt
+            upload_text = f"""
+🎯 *Smart Conversion Selected*
 
-def detect_file_type(file_extension):
-    """Detect file type category using simplified format list"""
-    file_extension = file_extension.lower()
-    
-    for file_type, extensions in Config.SUPPORTED_FORMATS.items():
-        if file_extension in extensions:
-            return file_type, Config.FORMAT_CATEGORIES[file_type]
-    
-    return 'unknown', '📁 Unknown'
+🔄 Conversion: `{input_format.upper()}` → `{output_format.upper()}`
+📁 Type: {category_name}
+
+📤 Please upload your `{input_format.upper()}` file now.
+
+After conversion, you'll be able to convert another file!
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton("📤 Upload File Now", callback_data="upload_now")],
+                [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
+            ]
+            
+            await query.edit_message_text(
+                upload_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            
+    except Exception as e:
+        logger.error(f"Error handling auto convert: {e}")
+        await query.edit_message_text(
+            "❌ Error processing conversion. Please try again.",
+            reply_markup=get_main_menu_keyboard(query.from_user.id)
+        )
+
+async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user conversion history"""
+    from handlers.history import show_history as show_user_history
+    await show_user_history(update, context)

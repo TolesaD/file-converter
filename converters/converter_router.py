@@ -30,8 +30,12 @@ class ConverterRouter:
         self.unsupported_formats = []
     
     def get_file_category(self, file_extension):
-        """Determine file category from extension"""
+        """Determine file category from extension - FIXED GIF DETECTION"""
         file_extension = file_extension.lower().lstrip('.')
+        
+        # Special handling for GIF - it should be treated as image, not video
+        if file_extension == 'gif':
+            return 'image'
         
         for category, extensions in Config.SUPPORTED_FORMATS.items():
             if file_extension in extensions:
@@ -82,7 +86,7 @@ class ConverterRouter:
                 raise Exception(f"Conversion failed: {str(e)}")
     
     async def get_supported_conversions(self, input_extension):
-        """Get all supported output formats for an input format"""
+        """Get all supported output formats for an input format - FIXED GIF HANDLING"""
         input_category = self.get_file_category(input_extension)
         
         if not input_category:
@@ -103,11 +107,20 @@ class ConverterRouter:
         elif input_category == 'video':
             supported.append('gif')  # Video to GIF
         
-        # Remove duplicates
+        # Remove duplicates and ensure GIF is properly handled
         supported = list(set(supported))
         
+        # Special handling for GIF conversions
+        if input_extension == 'gif':
+            # GIF can convert to all image formats
+            supported.extend(['jpg', 'jpeg', 'png', 'bmp', 'pdf'])
+        elif input_extension in ['jpg', 'jpeg', 'png', 'bmp']:
+            # Images can convert to GIF
+            if 'gif' not in supported:
+                supported.append('gif')
+        
         # Sort by most common formats first
-        common_formats = ['pdf', 'jpg', 'png', 'mp3', 'mp4', 'docx', 'txt', 'wav', 'avi', 'mov', 'mkv', 'aac', 'xlsx']
+        common_formats = ['pdf', 'jpg', 'png', 'mp3', 'mp4', 'docx', 'txt', 'wav', 'avi', 'mov', 'mkv', 'aac', 'xlsx', 'gif']
         sorted_supported = [fmt for fmt in common_formats if fmt in supported]
         sorted_supported.extend([fmt for fmt in supported if fmt not in common_formats])
         

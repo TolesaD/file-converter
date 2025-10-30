@@ -2,9 +2,9 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import Config
 from converters.converter_router import converter_router
 import asyncio
-import logging  # ADD THIS IMPORT
+import logging
 
-logger = logging.getLogger(__name__)  # ADD THIS LINE
+logger = logging.getLogger(__name__)
 
 def get_main_menu_keyboard(user_id):
     """Get main menu keyboard"""
@@ -22,6 +22,14 @@ def get_main_menu_keyboard(user_id):
     if user_id in Config.ADMIN_IDS:
         keyboard.append([InlineKeyboardButton("👑 Admin Panel", callback_data="admin_panel")])
     
+    return InlineKeyboardMarkup(keyboard)
+
+def get_continue_menu_keyboard():
+    """Get keyboard for continuing after conversion"""
+    keyboard = [
+        [InlineKeyboardButton("🔄 Convert Another File", callback_data="convert_file")],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_commands_keyboard():
@@ -47,13 +55,17 @@ def get_document_conversion_keyboard():
         # TXT conversions
         [InlineKeyboardButton("📄 TXT to PDF", callback_data="convert_doc_txt_pdf")],
         [InlineKeyboardButton("📄 TXT to DOCX", callback_data="convert_doc_txt_docx")],
+        [InlineKeyboardButton("📄 TXT to XLSX", callback_data="convert_doc_txt_xlsx")],
         
         # Excel conversions
         [InlineKeyboardButton("📊 XLSX to PDF", callback_data="convert_doc_xlsx_pdf")],
+        [InlineKeyboardButton("📊 XLSX to TXT", callback_data="convert_doc_xlsx_txt")],
+        [InlineKeyboardButton("📊 XLSX to DOCX", callback_data="convert_doc_xlsx_docx")],
         
         # ODT conversions
         [InlineKeyboardButton("📄 ODT to PDF", callback_data="convert_doc_odt_pdf")],
         
+        [InlineKeyboardButton("🔄 Convert Another", callback_data="convert_file")],
         [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -85,12 +97,13 @@ def get_image_conversion_keyboard():
         [InlineKeyboardButton("🖼 BMP to JPEG", callback_data="convert_img_bmp_jpeg")],
         [InlineKeyboardButton("🖼 BMP to GIF", callback_data="convert_img_bmp_gif")],
         
-        # GIF conversions
+        # GIF conversions - FIXED: GIF is now properly handled as image
         [InlineKeyboardButton("🖼 GIF to PNG", callback_data="convert_img_gif_png")],
         [InlineKeyboardButton("🖼 GIF to JPG", callback_data="convert_img_gif_jpg")],
         [InlineKeyboardButton("🖼 GIF to JPEG", callback_data="convert_img_gif_jpeg")],
         [InlineKeyboardButton("🖼 GIF to BMP", callback_data="convert_img_gif_bmp")],
         
+        [InlineKeyboardButton("🔄 Convert Another", callback_data="convert_file")],
         [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -107,6 +120,7 @@ def get_audio_conversion_keyboard():
         [InlineKeyboardButton("🎵 AAC to MP3", callback_data="convert_audio_aac_mp3")],
         [InlineKeyboardButton("🎵 AAC to WAV", callback_data="convert_audio_aac_wav")],
         
+        [InlineKeyboardButton("🔄 Convert Another", callback_data="convert_file")],
         [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -135,6 +149,7 @@ def get_video_conversion_keyboard():
         [InlineKeyboardButton("🎥 MKV to AVI", callback_data="convert_video_mkv_avi")],
         [InlineKeyboardButton("🎥 MKV to MOV", callback_data="convert_video_mkv_mov")],
         
+        [InlineKeyboardButton("🔄 Convert Another", callback_data="convert_file")],
         [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -144,6 +159,7 @@ def get_presentation_conversion_keyboard():
     keyboard = [
         [InlineKeyboardButton("🖼 PPTX to PDF", callback_data="convert_presentation_pptx_pdf")],
         [InlineKeyboardButton("🖼 PPT to PDF", callback_data="convert_presentation_ppt_pdf")],
+        [InlineKeyboardButton("🔄 Convert Another", callback_data="convert_file")],
         [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -188,7 +204,7 @@ def get_format_suggestions_keyboard(file_extension, file_type):
         keyboard.append(row)
     
     # Add navigation buttons
-    keyboard.append([InlineKeyboardButton("🔍 Browse All Categories", callback_data="commands")])
+    keyboard.append([InlineKeyboardButton("🔍 Browse All Categories", callback_data="convert_file")])
     keyboard.append([InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")])
     
     return InlineKeyboardMarkup(keyboard)
@@ -197,7 +213,7 @@ def _get_format_emoji(format_type):
     """Get appropriate emoji for file format"""
     emoji_map = {
         'pdf': '📄',
-        'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🎬', 'bmp': '🖼️',
+        'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️', 'bmp': '🖼️',  # GIF is image
         'mp3': '🎵', 'wav': '🎵', 'aac': '🎵',
         'mp4': '🎥', 'avi': '🎥', 'mov': '🎥', 'mkv': '🎥',
         'docx': '📝', 'txt': '📝', 'xlsx': '📊', 'odt': '📝',
@@ -208,7 +224,7 @@ def _get_format_emoji(format_type):
 def get_fallback_suggestions(file_extension, file_type):
     """Fallback suggestions if router fails"""
     suggestions_map = {
-        'image': ['jpg', 'png', 'pdf', 'bmp', 'gif'],
+        'image': ['jpg', 'png', 'pdf', 'bmp', 'gif'],  # GIF included in images
         'audio': ['mp3', 'wav', 'aac'],
         'video': ['mp4', 'avi', 'mov', 'mkv', 'gif'],
         'document': ['pdf', 'docx', 'txt', 'xlsx'],

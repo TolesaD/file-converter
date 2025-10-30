@@ -35,6 +35,10 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"File upload from user {user_id}")
     
     # Get file information
+    file = None
+    file_name = ""
+    file_extension = ""
+    
     if update.message.document:
         file = update.message.document
         file_name = file.file_name or "file"
@@ -71,6 +75,10 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         file_obj = await file.get_file()
         input_path = f"temp/uploads/{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_extension}"
+        
+        # Ensure upload directory exists
+        os.makedirs(os.path.dirname(input_path), exist_ok=True)
+        
         await file_obj.download_to_drive(input_path)
         
         logger.info(f"File downloaded to: {input_path} (Size: {file.file_size} bytes)")
@@ -208,7 +216,9 @@ async def process_file_directly(update, context, input_path, file_extension, use
             'output_format': output_format,
             'conversion_type': conversion_type,
             'input_type': file_extension,
-            'file_size': os.path.getsize(input_path)
+            'file_size': os.path.getsize(input_path),
+            'update': update,  # Pass update object for sending results
+            'context': context  # Pass context for menu persistence
         }
         
         # Add to queue
@@ -226,7 +236,7 @@ async def process_file_directly(update, context, input_path, file_extension, use
         elif hasattr(update, 'edit_message_text'):
             await update.edit_message_text(queue_message, parse_mode='Markdown')
         
-        # Clear conversion data
+        # Clear conversion data but keep menu state
         context.user_data.pop('conversion_type', None)
         context.user_data.pop('output_format', None)
         context.user_data.pop('file_type', None)
@@ -251,3 +261,67 @@ async def process_file_directly(update, context, input_path, file_extension, use
                 os.remove(input_path)
             except:
                 pass
+
+async def send_conversion_result(update, context, result_path, original_file_name, output_format, success=True, error_message=None):
+    """Send conversion result with persistent menu"""
+    try:
+        user_id = update.effective_user.id
+        
+        if success and os.path.exists(result_path):
+            # Send the converted file
+            file_size = os.path.getsize(result_path)
+            file_size_mb = file_size / (1024 * 1024)
+            
+            # Determine file type for sending
+            if output_format in ['jpg', 'jpeg', 'png', 'gif', 'bmp']:
+                await update.message.reply_document(
+                    document=open(result_path, 'rb'),
+                    filename=f"{original_file_name.rsplit('.', 1)[0]}.{output_format}",
+                    caption=f"✅ *Conversion Successful!*\n\n"
+                           f"📁 Output: `{output_format.upper()}`\n"
+                           f"📊 Size: `{file_size_mb:.1f} MB`\n\n"
+                           f"🔄 Want to convert another file?",
+                    parse_mode='Markdown',
+                    reply_markup=get_continue_menu_keyboard()
+                )
+            else:
+                await update.message.reply_document(
+                    document=open(result_path, 'rb'),
+                    filename=f"{original_file_name.rsplit('.', 1)[0]}.{output_format}",
+                    caption=f"✅ *Conversion Successful!*\n\n"
+                           f"📁 Output: `{output_format.upper()}`\n"
+                           f"📊 Size: `{file_size_mb:.1f} MB`\n\n"
+                           f"🔄 Want to convert another file?",
+                    parse_mode='Markdown',
+                    reply_markup=get_continue_menu_keyboard()
+                )
+            
+            # Clean up files
+            try:
+                if os.path.exists(result_path):
+                    os.remove(result_path)
+            except:
+                pass
+                
+        else:
+            error_msg = error_message or "Conversion failed"
+            await update.message.reply_text(
+                f"❌ *Conversion Failed*\n\nError: {error_msg}\n\nPlease try again or contact support.",
+                parse_mode='Markdown',
+                reply_markup=get_continue_menu_keyboard()
+            )
+            
+    except Exception as e:
+        logger.error(f"Error sending conversion result: {e}")
+        await update.message.reply_text(
+            "❌ Error sending result. But conversion may have completed.",
+            reply_markup=get_continue_menu_keyboard()
+        )
+
+def get_continue_menu_keyboard():
+    """Get keyboard for continuing after conversion"""
+    keyboard = [
+        [InlineKeyboardButton("🔄 Convert Another File", callback_data="convert_file")],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
