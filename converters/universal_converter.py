@@ -112,6 +112,10 @@ class UniversalConverter:
                     # Fallback for other formats
                     img.save(output_path, format=output_format.upper())
                 
+                # Verify conversion actually happened
+                if not os.path.exists(output_path):
+                    raise Exception("Image conversion failed - no output file created")
+                
                 return output_path
                 
         except Exception as e:
@@ -628,6 +632,8 @@ class UniversalConverter:
                     return await self._text_to_pdf_advanced(input_path, output_path)
                 elif output_format == 'docx':
                     return await self._text_to_docx_advanced(input_path, output_path)
+                elif output_format == 'xlsx':
+                    return await self._text_to_excel_advanced(input_path, output_path)
             
             # Word document conversions
             elif input_extension == 'docx':
@@ -819,8 +825,11 @@ class UniversalConverter:
             paragraphs = text_content.split('\n')
             for para in paragraphs:
                 if para.strip():
-                    story.append(Paragraph(para.strip(), custom_style))
-                    story.append(Spacer(1, 12))
+                    # Clean HTML tags and special characters
+                    clean_para = self._clean_text_content(para.strip())
+                    if clean_para:
+                        story.append(Paragraph(clean_para, custom_style))
+                        story.append(Spacer(1, 12))
             
             if story:
                 doc.build(story)
@@ -835,7 +844,7 @@ class UniversalConverter:
         """Advanced text to DOCX conversion"""
         try:
             from docx import Document
-            from docx.shared import Pt  # Fixed import
+            from docx.shared import Pt
             
             with open(input_path, 'r', encoding='utf-8') as f:
                 text_content = f.read()
@@ -845,20 +854,89 @@ class UniversalConverter:
             # Add professional styling
             style = doc.styles['Normal']
             style.font.name = 'Arial'
-            style.font.size = Pt(11)  # Fixed: Use Pt directly
+            style.font.size = Pt(11)
             
             # Add content with proper paragraph formatting
             paragraphs = text_content.split('\n')
             for para in paragraphs:
                 if para.strip():
                     p = doc.add_paragraph(para.strip())
-                    p.paragraph_format.space_after = Pt(6)  # Fixed: Use Pt directly
+                    p.paragraph_format.space_after = Pt(6)
             
             doc.save(output_path)
             return output_path
             
         except Exception as e:
             raise Exception(f"Advanced text to DOCX conversion failed: {str(e)}")
+    
+    async def _text_to_excel_advanced(self, input_path, output_path):
+        """Advanced text to Excel conversion"""
+        try:
+            import pandas as pd
+            
+            with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
+                text_content = f.read()
+            
+            # Split text into lines and create structured data
+            lines = [line.strip() for line in text_content.split('\n') if line.strip()]
+            
+            if not lines:
+                raise Exception("No content found in text file")
+            
+            # Create DataFrame with structured data
+            data = []
+            for i, line in enumerate(lines):
+                # Split line by common delimiters or use as single column
+                if any(delimiter in line for delimiter in [',', ';', '\t']):
+                    # Try to split by delimiters
+                    if ',' in line:
+                        parts = [part.strip() for part in line.split(',')]
+                    elif ';' in line:
+                        parts = [part.strip() for part in line.split(';')]
+                    elif '\t' in line:
+                        parts = [part.strip() for part in line.split('\t')]
+                    else:
+                        parts = [line]
+                else:
+                    parts = [line]
+                
+                data.append(parts)
+            
+            # Find maximum number of columns
+            max_cols = max(len(row) for row in data) if data else 1
+            
+            # Pad rows to have same number of columns
+            padded_data = []
+            for row in data:
+                padded_row = row + [''] * (max_cols - len(row))
+                padded_data.append(padded_row)
+            
+            # Create DataFrame with appropriate column names
+            columns = [f'Column_{i+1}' for i in range(max_cols)]
+            df = pd.DataFrame(padded_data, columns=columns)
+            
+            # Save to Excel
+            df.to_excel(output_path, index=False)
+            return output_path
+            
+        except Exception as e:
+            raise Exception(f"Advanced text to Excel conversion failed: {str(e)}")
+    
+    def _clean_text_content(self, text):
+        """Clean text content by removing HTML tags and problematic characters"""
+        import re
+        
+        # Remove HTML tags
+        clean_text = re.sub(r'<[^>]+>', '', text)
+        
+        # Remove problematic characters that break ReportLab
+        clean_text = re.sub(r'[^\x00-\x7F]+', ' ', clean_text)  # Remove non-ASCII
+        clean_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', clean_text)  # Remove control chars
+        
+        # Clean up multiple spaces
+        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+        
+        return clean_text
     
     async def _docx_to_pdf_advanced(self, input_path, output_path):
         """Advanced DOCX to PDF conversion using LibreOffice"""
