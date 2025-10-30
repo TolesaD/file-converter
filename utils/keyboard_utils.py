@@ -127,7 +127,6 @@ def _get_format_emoji(format_type):
     }
     return emoji_map.get(format_type, '📁')
 
-# ... keep all the other keyboard functions the same as before ...
 def get_document_conversion_keyboard():
     """Get document conversion options"""
     keyboard = [
@@ -190,5 +189,51 @@ def get_presentation_conversion_keyboard():
         [InlineKeyboardButton("🖼 PPT to PDF", callback_data="convert_presentation_ppt_pdf")],
         [InlineKeyboardButton("📤 Upload Any Presentation", callback_data="upload_now")],
         [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_admin_keyboard():
+    """Get admin panel keyboard"""
+    keyboard = [
+        [InlineKeyboardButton("📊 System Statistics", callback_data="admin_stats")],
+        [InlineKeyboardButton("👥 User Management", callback_data="admin_users")],
+        [InlineKeyboardButton("📢 Broadcast Message", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("📈 Reports", callback_data="admin_reports")],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_admin_stats_keyboard():
+    """Get admin statistics keyboard"""
+    keyboard = [
+        [InlineKeyboardButton("🔄 Live Stats", callback_data="admin_stats_live")],
+        [InlineKeyboardButton("📅 Daily Report", callback_data="admin_stats_daily")],
+        [InlineKeyboardButton("👥 User Analytics", callback_data="admin_stats_users")],
+        [InlineKeyboardButton("📁 Format Usage", callback_data="admin_stats_formats")],
+        [InlineKeyboardButton("🔄 Refresh", callback_data="admin_refresh")],
+        [InlineKeyboardButton("🔙 Back to Admin", callback_data="admin_panel")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_cancel_keyboard():
+    """Get cancel operation keyboard"""
+    keyboard = [
+        [InlineKeyboardButton("❌ Cancel", callback_data="admin_panel")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_continue_menu_keyboard():
+    """Get keyboard for continuing after conversion"""
+    keyboard = [
+        [InlineKeyboardButton("🔄 Convert Another File", callback_data="convert_file")],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_commands_keyboard():
+    """Get commands keyboard"""
+    keyboard = [
+        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
+        [InlineKeyboardButton("📊 View History", callback_data="history")],
     ]
     return InlineKeyboardMarkup(keyboard)
