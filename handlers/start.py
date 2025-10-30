@@ -1,7 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import db
-from utils.keyboard_utils import get_main_menu_keyboard
+from utils.keyboard_utils import get_main_menu_keyboard, get_format_suggestions_keyboard
 import logging
 
 logger = logging.getLogger(__name__)
@@ -37,22 +37,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = """
 🤖 *Welcome to Professional File Converter Bot!*
 
-I can convert your files between various formats with high quality and accuracy.
+I can automatically detect your file type and suggest the best conversion options!
 
-📁 *Supported Conversions:*
-• 📷 Images (PNG, JPG, JPEG, BMP, GIF)
-• 🔊 Audio (MP3, WAV, AAC)  
-• 📹 Video (MP4, AVI, MOV, MKV)
-• 💼 Documents (PDF, DOCX, TXT, XLSX, ODT)
-• 🖼 Presentations (PPTX, PPT)
+📁 *Just upload any file and I'll show you what I can convert it to.*
 
 ✨ *Features:*
+• Smart file type detection
+• Automatic conversion suggestions  
 • High quality conversions
-• Fast processing
-• Support for large files
-• Multiple format options
+• Support for large files (up to 2GB)
 
-Use the buttons below to get started! 🚀
+Try it now - upload any file! 🚀
 """
     
     await update.message.reply_text(
@@ -69,26 +64,25 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📖 *File Converter Bot Help*
 
 *How to use:*
-1. Click *"Convert File"* or choose a specific category
-2. Select the conversion type you want
-3. Upload your file when prompted
-4. Wait for processing
+1. Upload any file (image, audio, video, document)
+2. I'll automatically detect the file type
+3. Choose from suggested conversion options
+4. Or browse all categories manually
 5. Download your converted file
 
-*Supported Formats:*
-
-*📷 Images:* PNG, JPG, JPEG, BMP, GIF
-*🔊 Audio:* MP3, WAV, AAC
-*📹 Video:* MP4, AVI, MOV, MKV  
-*💼 Documents:* PDF, DOCX, TXT, XLSX, ODT
+*Smart Detection Supports:*
+*📷 Images:* PNG, JPG, JPEG, BMP, GIF, WEBP
+*🔊 Audio:* MP3, WAV, AAC, OGG, FLAC  
+*📹 Video:* MP4, AVI, MOV, MKV, WEBM
+*💼 Documents:* PDF, DOCX, DOC, TXT, XLSX, XLS, ODT
 *🖼 Presentations:* PPTX, PPT
 
 *Tips:*
-• Files are automatically deleted after 24 hours
 • Maximum file size: 2GB
-• Conversion time depends on file size and type
+• Files are automatically processed
+• You can convert multiple files without restarting
 
-Need help? Contact the administrator.
+Just upload a file to get started!
 """
     
     await update.message.reply_text(
@@ -98,34 +92,38 @@ Need help? Contact the administrator.
     )
 
 def detect_file_type(file_extension):
-    """Detect file type from extension"""
+    """Detect file type from extension - IMPROVED DETECTION"""
     file_extension = file_extension.lower().lstrip('.')
     
-    # Map extensions to categories
-    image_formats = ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp']
-    audio_formats = ['mp3', 'wav', 'aac', 'ogg', 'flac']
-    video_formats = ['mp4', 'avi', 'mov', 'mkv', 'webm', 'flv']
-    document_formats = ['pdf', 'docx', 'doc', 'txt', 'xlsx', 'xls', 'odt', 'rtf']
-    presentation_formats = ['pptx', 'ppt', 'odp']
+    # Enhanced format mapping
+    image_formats = ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'tiff', 'tif', 'ico', 'svg']
+    audio_formats = ['mp3', 'wav', 'aac', 'ogg', 'flac', 'm4a', 'wma', 'aiff']
+    video_formats = ['mp4', 'avi', 'mov', 'mkv', 'webm', 'flv', 'wmv', 'm4v', '3gp']
+    document_formats = ['pdf', 'docx', 'doc', 'txt', 'xlsx', 'xls', 'odt', 'rtf', 'csv', 'ppt', 'pptx', 'odp', 'ods']
     
     if file_extension in image_formats:
         return 'image', 'Image'
     elif file_extension in audio_formats:
         return 'audio', 'Audio'
     elif file_extension in video_formats:
-        # Special handling for GIF - it should be treated as image, not video
-        if file_extension == 'gif':
-            return 'image', 'Image (GIF)'
         return 'video', 'Video'
     elif file_extension in document_formats:
-        return 'document', 'Document'
-    elif file_extension in presentation_formats:
-        return 'presentation', 'Presentation'
+        # Further categorize documents
+        if file_extension in ['pdf']:
+            return 'document', 'PDF Document'
+        elif file_extension in ['docx', 'doc', 'odt', 'rtf']:
+            return 'document', 'Word Document'
+        elif file_extension in ['xlsx', 'xls', 'csv', 'ods']:
+            return 'document', 'Spreadsheet'
+        elif file_extension in ['ppt', 'pptx', 'odp']:
+            return 'presentation', 'Presentation'
+        else:
+            return 'document', 'Document'
     else:
-        return 'unknown', 'Unknown'
+        return 'unknown', 'Unknown File'
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle all callback queries"""
+    """Handle all callback queries - SIMPLIFIED AND FIXED"""
     query = update.callback_query
     await query.answer()
     
@@ -144,51 +142,64 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"Callback from user {user_id}: {callback_data}")
     
-    # Handle main menu navigation
-    if callback_data == "main_menu":
-        await show_main_menu(query)
-        return
-    
-    # Handle conversion category selection
-    elif callback_data == "convert_file":
+    try:
+        # Handle main menu navigation
+        if callback_data == "main_menu":
+            await show_main_menu(query)
+            return
+        
+        # Handle upload now button
+        elif callback_data == "upload_now":
+            await query.edit_message_text(
+                "📤 *Ready for Upload*\n\nPlease upload your file now. I'll automatically detect its type and show conversion options!",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Handle conversion category selection
+        elif callback_data == "convert_file":
+            await query.edit_message_text(
+                "📁 *Choose File Category*\n\nSelect the type of file you want to convert, or just upload any file for automatic detection:",
+                reply_markup=get_conversion_categories_keyboard(),
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Handle specific category menus
+        elif callback_data.startswith("menu_"):
+            await handle_category_menu(query, callback_data)
+            return
+        
+        # Handle conversion type selection
+        elif callback_data.startswith("convert_"):
+            await handle_conversion_selection(query, callback_data, context)
+            return
+        
+        # Handle auto-convert from suggestions (SMART DETECTION)
+        elif callback_data.startswith("auto_convert_"):
+            await handle_auto_convert(query, callback_data, context)
+            return
+        
+        # Handle history
+        elif callback_data == "history":
+            from handlers.history import show_history
+            await show_history(update, context)
+            return
+        
+        # Handle admin panel
+        elif callback_data == "admin_panel":
+            from handlers.admin import admin_panel
+            await admin_panel(update, context)
+            return
+        
+        # Default fallback - show main menu
+        else:
+            await show_main_menu(query)
+            
+    except Exception as e:
+        logger.error(f"Error in callback handler: {e}")
         await query.edit_message_text(
-            "📁 *Choose File Category*\n\nSelect the type of file you want to convert:",
-            reply_markup=get_conversion_categories_keyboard(),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # Handle specific category menus
-    elif callback_data.startswith("menu_"):
-        await handle_category_menu(query, callback_data)
-        return
-    
-    # Handle conversion type selection
-    elif callback_data.startswith("convert_"):
-        await handle_conversion_selection(query, callback_data, context)
-        return
-    
-    # Handle auto-convert from suggestions
-    elif callback_data.startswith("auto_convert_"):
-        await handle_auto_convert(query, callback_data, context)
-        return
-    
-    # Handle history
-    elif callback_data == "history":
-        from handlers.history import show_history
-        await show_history(update, context)
-        return
-    
-    # Handle admin panel
-    elif callback_data == "admin_panel":
-        from handlers.admin import admin_panel
-        await admin_panel(update, context)
-        return
-    
-    # Default fallback
-    else:
-        await query.edit_message_text(
-            "❌ Unknown command. Please use the menu below:",
+            "❌ Something went wrong. Please try again.",
             reply_markup=get_main_menu_keyboard(user_id)
         )
 
@@ -197,7 +208,15 @@ async def show_main_menu(query):
     welcome_text = """
 🤖 *Professional File Converter Bot*
 
-Choose an option below to get started with file conversion:
+I automatically detect file types and suggest conversion options!
+
+💡 *How to use:*
+1. Upload any file
+2. I'll detect the type automatically  
+3. Choose from smart suggestions
+4. Get your converted file
+
+Try it now - upload any file! 📁
 """
     
     await query.edit_message_text(
@@ -214,6 +233,7 @@ def get_conversion_categories_keyboard():
         [InlineKeyboardButton("📹 Convert Video", callback_data="menu_video")],
         [InlineKeyboardButton("💼 Convert Documents", callback_data="menu_documents")],
         [InlineKeyboardButton("🖼 Convert Presentations", callback_data="menu_presentations")],
+        [InlineKeyboardButton("📤 Or Upload Any File", callback_data="upload_now")],
         [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -239,7 +259,7 @@ async def handle_category_menu(query, callback_data):
     if callback_data in category_map:
         title, keyboard_func = category_map[callback_data]
         await query.edit_message_text(
-            f"{title}\n\nSelect the conversion type:",
+            f"{title}\n\nSelect the conversion type, or upload a file for automatic detection:",
             reply_markup=keyboard_func(),
             parse_mode='Markdown'
         )
@@ -271,8 +291,9 @@ async def handle_conversion_selection(query, callback_data, context):
             context.user_data['conversion_type'] = f"{input_format}_to_{output_format}"
             context.user_data['output_format'] = output_format
             context.user_data['file_type'] = category
-            
-            # Show upload prompt with CONTINUE menu
+            context.user_data['expecting_followup_upload'] = True
+
+            # Show upload prompt
             upload_text = f"""
 🎯 *{category_name} Conversion Selected*
 
@@ -280,7 +301,7 @@ async def handle_conversion_selection(query, callback_data, context):
 
 📤 Please upload your `{input_format.upper()}` file now.
 
-After conversion, you'll be able to convert another file without restarting!
+I'll process it and show you the converted file!
 """
             
             keyboard = [
@@ -305,7 +326,7 @@ After conversion, you'll be able to convert another file without restarting!
         )
 
 async def handle_auto_convert(query, callback_data, context):
-    """Handle auto-convert from smart suggestions"""
+    """Handle auto-convert from smart suggestions - FIXED"""
     try:
         # Format: auto_convert_{input}_{output}
         parts = callback_data.split('_')
@@ -321,7 +342,8 @@ async def handle_auto_convert(query, callback_data, context):
             context.user_data['conversion_type'] = f"{input_format}_to_{output_format}"
             context.user_data['output_format'] = output_format
             context.user_data['file_type'] = file_type
-            
+            context.user_data['expecting_followup_upload'] = True
+
             # Show upload prompt
             upload_text = f"""
 🎯 *Smart Conversion Selected*
@@ -331,7 +353,7 @@ async def handle_auto_convert(query, callback_data, context):
 
 📤 Please upload your `{input_format.upper()}` file now.
 
-After conversion, you'll be able to convert another file!
+I'll automatically convert it for you!
 """
             
             keyboard = [
