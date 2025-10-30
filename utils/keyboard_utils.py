@@ -2,9 +2,9 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import Config
 from converters.converter_router import converter_router
 import asyncio
-import logging
+import logging  # ADD THIS IMPORT
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)  # ADD THIS LINE
 
 def get_main_menu_keyboard(user_id):
     """Get main menu keyboard"""
@@ -32,15 +32,6 @@ def get_commands_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_continue_keyboard():
-    """Get keyboard for continuing after conversion"""
-    keyboard = [
-        [InlineKeyboardButton("🔄 Convert Another File", callback_data="convert_file")],
-        [InlineKeyboardButton("📊 View History", callback_data="history")],
-        [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
 def get_document_conversion_keyboard():
     """Get document conversion options - ALL 12 RELIABLE CONVERSIONS"""
     keyboard = [
@@ -56,7 +47,6 @@ def get_document_conversion_keyboard():
         # TXT conversions
         [InlineKeyboardButton("📄 TXT to PDF", callback_data="convert_doc_txt_pdf")],
         [InlineKeyboardButton("📄 TXT to DOCX", callback_data="convert_doc_txt_docx")],
-        [InlineKeyboardButton("📄 TXT to XLSX", callback_data="convert_doc_txt_xlsx")],
         
         # Excel conversions
         [InlineKeyboardButton("📊 XLSX to PDF", callback_data="convert_doc_xlsx_pdf")],
@@ -165,9 +155,12 @@ def get_format_suggestions_keyboard(file_extension, file_type):
     # Get supported conversions from router
     try:
         # Run the async function in a sync context
-        supported_formats = asyncio.run(
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        supported_formats = loop.run_until_complete(
             converter_router.get_supported_conversions(file_extension)
         )
+        loop.close()
     except Exception as e:
         logger.error(f"Error getting supported conversions: {e}")
         # Fallback if async call fails
