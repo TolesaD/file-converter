@@ -52,7 +52,7 @@ class Config:
     active_jobs = 0
     job_lock = asyncio.Lock()
     
-# Complete supported formats - ADD TXT to XLSX support
+    # Complete supported formats
     SUPPORTED_FORMATS = {
         'image': ['png', 'jpg', 'jpeg', 'bmp', 'gif'],
         'audio': ['mp3', 'wav', 'aac'],
@@ -61,7 +61,16 @@ class Config:
         'presentation': ['pptx', 'ppt']
     }
     
-    # COMPLETE Conversion mapping - ADD TXT to XLSX
+    # Format categories with emojis
+    FORMAT_CATEGORIES = {
+        'image': '📷 Images',
+        'audio': '🔊 Audio', 
+        'video': '📹 Video',
+        'document': '💼 Documents',
+        'presentation': '🖼 Presentations'
+    }
+    
+    # COMPLETE Conversion mapping - what can be converted to what
     CONVERSION_MAP = {
         'image': {
             'png': ['jpg', 'jpeg', 'bmp', 'gif', 'pdf'],
@@ -84,7 +93,7 @@ class Config:
         'document': {
             'pdf': ['docx', 'txt', 'xlsx'],
             'docx': ['pdf', 'txt'],
-            'txt': ['pdf', 'docx', 'xlsx'],  # ADD XLSX support
+            'txt': ['pdf', 'docx'],
             'xlsx': ['pdf'],
             'odt': ['pdf']
         },
